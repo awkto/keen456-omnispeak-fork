@@ -630,6 +630,7 @@ static uint16_t us_randomIndex; // Was 16-bit, even if storing just a 8-bit val
 
 void US_InitRndT(bool randomize)
 {
+	if (getenv("OMNI_SPIKE_CAPTURE")) randomize = false; // SPIKE: deterministic captures
 	if (randomize)
 	{
 		us_randomIndex = time(0) & 0xFF;

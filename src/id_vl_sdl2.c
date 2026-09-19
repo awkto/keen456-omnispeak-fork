@@ -463,3 +463,29 @@ VL_Backend *VL_Impl_GetBackend()
 	SDL_Init(SDL_INIT_VIDEO);
 	return &vl_sdl2_backend;
 }
+
+/* SPIKE (#89): present a pre-composited ARGB frame of arbitrary size. */
+void VL_SDL2_SpikePresent(const uint32_t *argb, int w, int h, const char *title)
+{
+	static SDL_Texture *tex;
+	static int tw, th;
+	VL_SDL2_ResizeWindow();
+	if (!tex || tw != w || th != h)
+	{
+		if (tex) SDL_DestroyTexture(tex);
+		SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
+		tex = SDL_CreateTexture(vl_sdl2_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, w, h);
+		tw = w; th = h;
+	}
+	if (title) SDL_SetWindowTitle(vl_sdl2_window, title);
+	SDL_Rect renderRect = {(Sint16)vl_renderRgn_x, (Sint16)vl_renderRgn_y, vl_renderRgn_w, vl_renderRgn_h};
+	SDL_Rect fullRect = {(Sint16)vl_fullRgn_x, (Sint16)vl_fullRgn_y, vl_fullRgn_w, vl_fullRgn_h};
+	SDL_UpdateTexture(tex, 0, argb, w * 4);
+	SDL_SetRenderTarget(vl_sdl2_renderer, 0);
+	SDL_RenderSetViewport(vl_sdl2_renderer, 0);
+	SDL_SetRenderDrawColor(vl_sdl2_renderer, 0, 0, 0, 255);
+	SDL_RenderClear(vl_sdl2_renderer);
+	SDL_RenderSetViewport(vl_sdl2_renderer, &fullRect);
+	SDL_RenderCopy(vl_sdl2_renderer, tex, 0, &renderRect);
+	SDL_RenderPresent(vl_sdl2_renderer);
+}
