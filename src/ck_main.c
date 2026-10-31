@@ -27,6 +27,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "ck_act.h"
 #include "ck_cross.h"
 #include "ck_def.h"
+#include "ck_fix.h"
 #include "ck_game.h"
 #include "ck_play.h"
 #ifdef WITH_RF_INTERP
@@ -588,7 +589,11 @@ int main(int argc, char *argv[])
 	#endif
 	int swapInterval = CFG_GetConfigInt("swapInterval", 1);
 #ifdef WITH_RF_INTERP
+	// The 'interpolation' option picks the mode, and also enables or disables
+	// the 'interpolation' fix if set. Otherwise the profile decides.
 	RFI_Mode interpMode = (RFI_Mode)CFG_GetConfigEnum("interpolation", rfi_modeStrings, RFI_Mode_Off);
+	if (CFG_ConfigExists("interpolation"))
+		CK_Fix_SetOverride("interpolation", interpMode != RFI_Mode_Off);
 #endif
 #ifdef CK_ENABLE_PLAYLOOP_DUMPER
 	const char *dumperFilename = NULL;
@@ -661,6 +666,25 @@ int main(int argc, char *argv[])
 		{
 			overrideCopyProtection = true;
 		}
+		else if (!CK_Cross_strcasecmp(argv[i], "/PROFILE"))
+		{
+			if (i + 1 >= argc || !CK_Fix_SetProfile(argv[++i]))
+				Quit("/PROFILE needs 'vanilla' or 'enhanced'");
+		}
+		else if (!CK_Cross_strcasecmp(argv[i], "/FIX") || !CK_Cross_strcasecmp(argv[i], "/NOFIX"))
+		{
+			bool enable = !CK_Cross_strcasecmp(argv[i], "/FIX");
+			if (i + 1 >= argc)
+				QuitF("%s needs the name of a fix", argv[i]);
+			if (!CK_Fix_SetOverride(argv[i + 1], enable))
+				QuitF("Unknown fix \"%s\"", argv[i + 1]);
+			++i;
+		}
+		else if (!CK_Cross_strcasecmp(argv[i], "/FORCEFIXES"))
+		{
+			// Testing only: lets fixes that change the game state run during demos and dumps.
+			CK_Fix_SetForce(true);
+		}
 #ifdef WITH_RF_INTERP
 		else if (!CK_Cross_strcasecmp(argv[i], "/INTERP"))
 		{
@@ -675,10 +699,11 @@ int main(int argc, char *argv[])
 					break;
 				}
 			}
+			CK_Fix_SetOverride("interpolation", interpMode != RFI_Mode_Off);
 		}
 		else if (!CK_Cross_strcasecmp(argv[i], "/NOINTERP"))
 		{
-			interpMode = RFI_Mode_Off;
+			CK_Fix_SetOverride("interpolation", false);
 		}
 #endif
 #ifdef CK_ENABLE_PLAYLOOP_DUMPER
@@ -760,12 +785,35 @@ int main(int argc, char *argv[])
 			return 1;
 		}
 		printf("Writing to dump file %s\n", dumperFilename);
+		CK_Fix_SetDumping(true);
+	}
+#endif
+
+	CK_Fix_Startup();
+
+#ifdef CK_ENABLE_PLAYLOOP_DUMPER
+	// Record the active fixes next to the dump, keeping the dump itself DOS-comparable.
+	if (dumperFilename != NULL)
+	{
+		char metaFilename[1024];
+		snprintf(metaFilename, sizeof(metaFilename), "%s.meta", dumperFilename);
+		FILE *metaFile = fopen(metaFilename, "w");
+		if (metaFile)
+		{
+			fprintf(metaFile, "episode %d\n", episodeNumber);
+			CK_Fix_WriteInfo(metaFile);
+			fclose(metaFile);
+		}
 	}
 #endif
 
 	vl_swapInterval = swapInterval;
 	VL_SetParams(isFullScreen, isAspectCorrected, hasBorder, isIntegerScaled);
 #ifdef WITH_RF_INTERP
+	if (!CK_FIX(Interpolation))
+		interpMode = RFI_Mode_Off;
+	else if (interpMode == RFI_Mode_Off)
+		interpMode = RFI_Mode_Pixel; // e.g. /FIX interpolation with 'interpolation = off'
 	RFI_Startup(interpMode);
 #endif
 
@@ -773,6 +821,10 @@ int main(int argc, char *argv[])
 		ck6_creatureQuestionDone = true;
 
 	CK_InitGame();
+
+	// Example fix (see ck_fix.h): a presentation-only entry showing the pattern.
+	if (CK_FIX(Example))
+		CK_Cross_LogMessage(CK_LOG_MSG_NORMAL, "Compat: the example fix is active.\n");
 
 	for (int i = 1; i < argc; ++i)
 	{

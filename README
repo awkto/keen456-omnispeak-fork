@@ -87,6 +87,15 @@ Omnispeak supports several command-line options, some of which are:
 		  Available as the 'interpolation' config option; default off.
 	/NOINTERP
 		- Disables interpolation (the default).
+	/PROFILE vanilla|enhanced
+		- Selects the compatibility profile (see PROFILES AND FIXES).
+		  Available as the 'profile' config option; default vanilla.
+	/FIX <name>, /NOFIX <name>
+		- Turns one fix or enhancement on or off, whatever the profile.
+		  Available as the 'fix_<name>' config option (true/false).
+	/FORCEFIXES
+		- For testing only: lets fixes that change the game state stay
+		  on during demos and the /DUMPFILE playloop dumper.
 
 == CONFIGURATION ==
 
@@ -109,6 +118,41 @@ file with the new settings.
 
 Note that this file is not episode-specific. The settings are shared between
 all episodes.
+
+== PROFILES AND FIXES ==
+
+The 'vanilla' profile, the default, plays exactly like the DOS games. Every
+change from that behaviour is a separate, named fix or enhancement, which the
+'enhanced' profile turns on by default. Each one can be turned on or off on its
+own with /FIX, /NOFIX or 'fix_<name>' in OMNISPK.CFG, for example:
+--8<--
+profile = "enhanced"
+fix_example = false
+--8<--
+Command-line options win over the config file, which wins over the profile.
+
+Each fix either affects the simulation (the game state) or only the
+presentation. Fixes which affect the simulation are always off while a demo is
+played back or recorded, and while the /DUMPFILE playloop dumper is active, so
+demos stay compatible with DOS. /FORCEFIXES overrides this, for testing.
+
+Current fixes (name, kind, default in vanilla / enhanced):
+	interpolation	presentation	off / on
+		- Display-rate interpolation; see /INTERP. The 'interpolation'
+		  config option and /INTERP, /NOINTERP also turn it on or off.
+	example		presentation	off / on
+		- Example entry: logs one line at startup.
+
+When /DUMPFILE <file> is used (debug builds), the profile and the state of each
+fix are written to '<file>.meta'. The dump itself is unchanged.
+
+To add a fix, add one CK_FIX_ENTRY line to the table in src/ck_fix.h (its
+name, whether it affects the simulation, the default for each profile, and a
+description), then guard the change with 'if (CK_FIX(Name))'. Then run
+tools/vanilla-guard.sh, which builds a debug binary, plays Keen 4 and Keen 5
+demos 0 and 1 in both profiles and checks that the dumps match the reference
+dumps in tests/ (or a dump from a git ref, with --base <ref>). It needs the
+game data in $KEEN_DATA/keen4 and $KEEN_DATA/keen5.
 
 == COMPILING ==
 

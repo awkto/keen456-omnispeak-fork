@@ -339,6 +339,8 @@ set(OMNISPEAK_CK_SRCS
 	src/ck_cross.h
 	src/ck_def.h
 	src/ck_ep.h
+	src/ck_fix.c
+	src/ck_fix.h
 	src/ck_game.c
 	src/ck_game.h
 	src/ck_inter.c
