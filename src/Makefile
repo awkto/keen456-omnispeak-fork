@@ -360,7 +360,8 @@ ifeq ($(RENDERER), sdl2sw)
 endif
 
 ifeq ($(RENDERER), sdl2gl)
-	RENDER_OBJS = id_vl_sdl2gl.o id_sd_sdl.o id_in_sdl.o
+	RENDER_OBJS = id_vl_sdl2gl.o id_sd_sdl.o id_in_sdl.o rf_interp.o
+	CXXFLAGS += -DWITH_RF_INTERP
 	LIBS += $(LIBGL)
 endif
 

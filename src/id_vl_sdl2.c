@@ -466,7 +466,7 @@ VL_Backend *VL_Impl_GetBackend()
 
 #ifdef WITH_RF_INTERP
 // Present a pre-composited ARGB frame of arbitrary size (used by rf_interp.c).
-void VL_SDL2_PresentARGB(const uint32_t *argb, int w, int h, const char *title)
+void VL_PresentARGB(const uint32_t *argb, int w, int h, const char *title)
 {
 	static SDL_Texture *tex;
 	static int tw, th;
@@ -489,5 +489,10 @@ void VL_SDL2_PresentARGB(const uint32_t *argb, int w, int h, const char *title)
 	SDL_RenderSetViewport(vl_sdl2_renderer, &fullRect);
 	SDL_RenderCopy(vl_sdl2_renderer, tex, 0, &renderRect);
 	SDL_RenderPresent(vl_sdl2_renderer);
+}
+
+// Single-buffered: nothing to flip.
+void VL_FlipPageNoPresent(void)
+{
 }
 #endif

@@ -82,8 +82,11 @@ Omnispeak supports several command-line options, some of which are:
 		  The game logic is unchanged; it adds one frame of latency.
 		  'pixel' (the default for a bare /INTERP) keeps whole pixels,
 		  'subpixel' uses quarter pixels, 'grid' does not interpolate
-		  (for comparison). F12 cycles modes while running. Only
-		  available with the SDL2 renderers (RENDERER=sdl2 or sdl2sw).
+		  (for comparison). F12 cycles modes while running. Frames
+		  are paced by vsync, or without vsync ('swapInterval = 0')
+		  by sleeping to the display's refresh rate. Available with
+		  the SDL2 renderers (RENDERER=sdl2, sdl2sw or sdl2gl), not
+		  sdl2vk or SDL3. See docs/INTERP.md.
 		  Available as the 'interpolation' config option; default off.
 	/NOINTERP
 		- Disables interpolation (the default).

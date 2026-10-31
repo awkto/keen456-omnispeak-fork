@@ -116,6 +116,7 @@ elseif(RENDERER STREQUAL "sdl2gl")
 		src/id_in_sdl.c
 		src/id_sd_sdl.c
 		src/id_vl_sdl2gl.c
+		src/rf_interp.c
 	)
 	if(APPLE)
 		set(OMNISPEAK_PLATFORM_LIBRARIES
@@ -139,7 +140,7 @@ elseif(RENDERER STREQUAL "sdl2gl")
 	include_directories(
 		${SDL2_INCLUDE_DIRS}
 	)
-	add_definitions(-DWITH_SDL)
+	add_definitions(-DWITH_SDL -DWITH_RF_INTERP)
 elseif(RENDERER STREQUAL "dos")
 	message(STATUS "Using DOS/EGA renderer backend")
 	set(OMNISPEAK_PLATFORM_SRCS

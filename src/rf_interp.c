@@ -36,11 +36,22 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *   OMNI_DEBUG_INTERP_CAPTURE=<file>  headless, deterministic capture: raw RGB24
  *       1280x800 frames on a virtual display, time advancing exactly 1/Hz per
  *       frame; RNG seeding is made deterministic.
- *   OMNI_DEBUG_INTERP_HZ=<n>          virtual display rate for the capture (60).
+ *   OMNI_DEBUG_INTERP_HZ=<n>          virtual display rate for the capture (60); in realtime,
+ *       caps the present rate to <n> Hz (as when there is no vsync).
  *   OMNI_DEBUG_INTERP_SKIP / _FRAMES  bound the recording; exits when done.
  *   OMNI_DEBUG_INTERP_LOG=<file.csv>  per-display-frame camera/Keen trace (capture only).
  *   OMNI_DEBUG_INTERP_SCRIPT="right:0-600,jump:80-90,..."  inject input by sim frame.
  *   OMNI_DEBUG_INTERP_STATS=1         frame-time/compose stats to stderr + window title.
+ *   OMNI_DEBUG_INTERP_PRESENTS=<file.csv>  one line per presented frame, for the cadence
+ *       bench (keen456-decomp #30): host time after the present returned (us since the
+ *       first present; virtual time in a capture), the gap to the previous present, the
+ *       sim frame shown (interpolating from sim-1 to sim) and alpha.
+ *
+ * PACING: presents block on vsync where the backend has it. Without vsync
+ * (swapInterval 0, or presents that don't block or outrun the refresh rate), presents are paced to
+ * the display mode's refresh rate (60 if unknown) by sleeping, never spinning.
+ * After a stall (window drag, breakpoint, slow frame) the sim catches up by at
+ * most rf_maxTics tics, like vanilla's RFL_CalcTics; anything longer is dropped.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -76,11 +87,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 extern int rf_scrollXUnit, rf_scrollYUnit;
 extern RF_SpriteDrawEntry *rf_firstSpriteTableEntry[RF_NUM_SPRITE_Z_LAYERS];
 extern int rf_demoTics;
+extern int rf_maxTics;
 void RFL_CalcTics(void);
-void VL_SDL2_PresentARGB(const uint32_t *argb, int w, int h, const char *title);
+void VL_PresentARGB(const uint32_t *argb, int w, int h, const char *title);
+void VL_FlipPageNoPresent(void);
 
 static int mode = RFI_Mode_Off, hz = 60;
-static bool enabled, debugStats;
+static bool enabled, debugStats, hzForced;
+static FILE *presentLog;
+static double presentT0 = -1, nextPresent;
+static int fastPresents;
+static bool noVsync;
 static FILE *capFile;
 static long capSkip, capFrames = -1, dispFrame, simFrame;
 static double frameStart = -1.0, vnow;
@@ -133,8 +150,18 @@ void RFI_Startup(RFI_Mode m)
 	enabled = (m != RFI_Mode_Off);
 	if (!enabled)
 		return;
-	if ((e = getenv("OMNI_DEBUG_INTERP_HZ")))
+	if ((e = getenv("OMNI_DEBUG_INTERP_HZ")) && atoi(e) > 0)
+	{
 		hz = atoi(e);
+		hzForced = true;
+	}
+	else if (!getenv("OMNI_DEBUG_INTERP_CAPTURE"))
+	{
+		/* pace to the display when there is no vsync; a capture stays at 60 */
+		SDL_DisplayMode dm;
+		if (SDL_GetCurrentDisplayMode(0, &dm) == 0 && dm.refresh_rate > 0)
+			hz = dm.refresh_rate;
+	}
 	if ((e = getenv("OMNI_DEBUG_INTERP_SKIP")))
 		capSkip = atol(e);
 	if ((e = getenv("OMNI_DEBUG_INTERP_FRAMES")))
@@ -146,6 +173,12 @@ void RFI_Startup(RFI_Mode m)
 		logFile = fopen(e, "w");
 		if (logFile)
 			fprintf(logFile, "disp,sim,alpha,cam_x_qpx,keen_world_x_qpx,keen_screen_x_qpx\n");
+	}
+	if ((e = getenv("OMNI_DEBUG_INTERP_PRESENTS")))
+	{
+		presentLog = fopen(e, "w");
+		if (presentLog)
+			fprintf(presentLog, "present,host_us,dt_us,sim,alpha\n");
 	}
 	if ((e = getenv("OMNI_DEBUG_INTERP_CAPTURE")))
 	{
@@ -305,6 +338,17 @@ static void Compose(double alpha)
 	}
 }
 
+static void LogPresent(double t)
+{
+	static double last;
+	if (!presentLog)
+		return;
+	if (presentT0 < 0)
+		presentT0 = last = t;
+	fprintf(presentLog, "%ld,%.0f,%.0f,%ld,%.3f\n", dispFrame, (t - presentT0) * 1e6, (t - last) * 1e6, simFrame, logAlpha);
+	last = t;
+}
+
 static void Present(void)
 {
 	uint32_t pal[256];
@@ -316,6 +360,7 @@ static void Present(void)
 	if (capFile)
 	{
 		if (logFile) fprintf(logFile, "%ld,%ld,%.3f,%d,%d,%d\n", dispFrame, simFrame, logAlpha, logCamX, logKeenWorldX, logKeenX);
+		LogPresent(vnow);
 		if (dispFrame >= capSkip)
 		{
 			for (int i = 0; i < OUT_W * OUT_H; ++i)
@@ -328,6 +373,7 @@ static void Present(void)
 			{
 				fclose(capFile);
 				if (logFile) fclose(logFile);
+				if (presentLog) fclose(presentLog);
 				CK_Cross_LogMessage(CK_LOG_MSG_NORMAL, "Interpolation: debug capture done: %ld display frames, %ld sim frames\n", dispFrame + 1, simFrame);
 				exit(0);
 			}
@@ -357,9 +403,26 @@ static void Present(void)
 		fprintf(stderr, "[interp] %s\n", title);
 		statT0 = t; statSum = 0; statN = 0; statMin = 1e9; statMax = 0;
 	}
+	/* No vsync to block on: sleep until the next refresh slot instead of spinning. */
+	if (hzForced || !vl_swapInterval || noVsync)
+	{
+		double wait = nextPresent - Now();
+		if (wait > 0.0005)
+			SDL_Delay((Uint32)(wait * 1000.0 + 0.5)); /* ms granularity: +-0.5 ms */
+		double now = Now();
+		nextPresent = CK_Cross_max(nextPresent + 1.0 / hz, now);
+	}
+	static double lastAfter;
 	double before = Now();
-	VL_SDL2_PresentARGB(out32, OUT_W, OUT_H, title[0] ? title : NULL);
-	if (Now() - before < 0.001) SDL_Delay(1); /* no vsync (Xvfb etc.): don't spin */
+	VL_PresentARGB(out32, OUT_W, OUT_H, title[0] ? title : NULL);
+	double after = Now();
+	/* Presents that never block, or come faster than the display refreshes,
+	 * mean vsync isn't pacing us: from then on, pace by sleeping. */
+	fastPresents = (after - before < 0.0005 || after - lastAfter < 0.75 / hz) ? fastPresents + 1 : 0;
+	if (fastPresents >= 8)
+		noVsync = true;
+	lastAfter = after;
+	LogPresent(after);
 	dispFrame++;
 }
 
@@ -373,7 +436,11 @@ void RFI_Frame(void)
 	double now = Now();
 
 	if (!havePrev) { prevCamX = rf_scrollXUnit; prevCamY = rf_scrollYUnit; havePrev = true; }
-	if (frameStart < 0 || now - frameStart > 0.25) frameStart = now; /* first frame, or resumed after a stall */
+	/* First frame, or resumed after a stall: like RFL_CalcTics, catch up at
+	 * most rf_maxTics tics (dropping presents) and let the game run slow for
+	 * the rest, instead of a burst of sim frames. */
+	if (frameStart < 0 || now - frameStart > rf_maxTics / 70.0)
+		frameStart = now;
 
 	for (;;)
 	{
@@ -386,6 +453,9 @@ void RFI_Frame(void)
 		Present();
 	}
 	frameStart += dur;
+	/* the page flip VL_Present would have done, so the renderer's buffers
+	 * (and RF's per-buffer eraser bookkeeping) advance once per sim frame */
+	VL_FlipPageNoPresent();
 
 	/* this sim frame becomes "prev" for the next one */
 	prevCamX = rf_scrollXUnit; prevCamY = rf_scrollYUnit;
@@ -411,6 +481,8 @@ void RFI_Frame(void)
 	}
 
 	simFrame++;
+	if (presentLog)
+		fflush(presentLog);
 	if (debugStats && simFrame % 25 == 0) fprintf(stderr, "[interp] sim %ld cam %d,%d\n", simFrame, rf_scrollXUnit, rf_scrollYUnit);
 	for (int i = 0; i < scriptN; ++i)
 	{

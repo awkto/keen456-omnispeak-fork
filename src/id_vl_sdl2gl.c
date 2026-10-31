@@ -558,6 +558,35 @@ static void VL_SDL2GL_ScrollSurface(void *surface, int x, int y)
 		VL_SDL2GL_SurfaceToSelf(surface, dx, dy, sx, sy, w, h);
 }
 
+#ifdef WITH_RF_INTERP
+// A pre-composited ARGB frame from rf_interp.c, drawn over the screen surface by the next present.
+static const uint32_t *vl_sdl2gl_argbFrame;
+static int vl_sdl2gl_argbW, vl_sdl2gl_argbH;
+static GLuint vl_sdl2gl_argbTexture;
+
+static void VL_SDL2GL_DrawARGBFrame(void)
+{
+	if (!vl_sdl2gl_argbTexture)
+	{
+		id_glGenTextures(1, &vl_sdl2gl_argbTexture);
+		id_glBindTexture(GL_TEXTURE_2D, vl_sdl2gl_argbTexture);
+		id_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		id_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		id_glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, vl_sdl2gl_argbW, vl_sdl2gl_argbH, 0, GL_BGRA, GL_UNSIGNED_BYTE, 0);
+	}
+	id_glBindTexture(GL_TEXTURE_2D, vl_sdl2gl_argbTexture);
+	id_glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+	id_glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, vl_sdl2gl_argbW, vl_sdl2gl_argbH, GL_BGRA, GL_UNSIGNED_BYTE, vl_sdl2gl_argbFrame);
+
+	float vtxCoords[] = {-1.0f, -1.0f, 1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f};
+	float texCoords[] = {0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f};
+	id_glUseProgram(0);
+	id_glVertexPointer(2, GL_FLOAT, 0, vtxCoords);
+	id_glTexCoordPointer(2, GL_FLOAT, 0, texCoords);
+	id_glDrawArrays(GL_QUADS, 0, 4);
+}
+#endif
+
 static void VL_SDL2GL_Present(void *surface, int scrlX, int scrlY, bool singleBuffered)
 {
 	int realWinW, realWinH;
@@ -644,6 +673,10 @@ static void VL_SDL2GL_Present(void *surface, int scrlX, int scrlY, bool singleBu
 	id_glTexCoordPointer(2, GL_FLOAT, 0, texCoords);
 
 	id_glDrawArrays(GL_QUADS, 0, 4);
+#ifdef WITH_RF_INTERP
+	if (vl_sdl2gl_argbFrame)
+		VL_SDL2GL_DrawARGBFrame();
+#endif
 
 	id_glViewport(vl_fullRgn_x, realWinH - vl_fullRgn_y - vl_fullRgn_h, vl_fullRgn_w, vl_fullRgn_h);
 	// Use EXT_framebuffer_blit if available, otherwise draw a quad.
@@ -767,3 +800,30 @@ VL_Backend *VL_Impl_GetBackend()
 	SDL_GL_LoadLibrary(0);
 	return &vl_sdl2gl_backend;
 }
+
+#ifdef WITH_RF_INTERP
+// Present a pre-composited ARGB frame (used by rf_interp.c); it is drawn into
+// the render region in place of the screen surface, which is not flipped.
+void VL_PresentARGB(const uint32_t *argb, int w, int h, const char *title)
+{
+	if (vl_sdl2gl_argbTexture && (w != vl_sdl2gl_argbW || h != vl_sdl2gl_argbH))
+	{
+		id_glDeleteTextures(1, &vl_sdl2gl_argbTexture);
+		vl_sdl2gl_argbTexture = 0;
+	}
+	vl_sdl2gl_argbFrame = argb;
+	vl_sdl2gl_argbW = w;
+	vl_sdl2gl_argbH = h;
+	if (title)
+		SDL_SetWindowTitle(vl_sdl2gl_window, title);
+	VL_SDL2GL_Present(vl_emuegavgaadapter.screen, 0, 0, true);
+	vl_sdl2gl_argbFrame = NULL;
+}
+
+// The page flip VL_Present does after a refresh, for rf_interp.c, which presents its own frames.
+void VL_FlipPageNoPresent(void)
+{
+	VL_SDL2GL_Surface *surf = (VL_SDL2GL_Surface *)vl_emuegavgaadapter.screen;
+	VL_SDL2GL_SetSurfacePage(surf, (surf->activePage + 1) % VL_SDL2GL_NUM_BUFFERS);
+}
+#endif
