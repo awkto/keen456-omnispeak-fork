@@ -75,6 +75,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 extern int rf_scrollXUnit, rf_scrollYUnit;
 extern RF_SpriteDrawEntry *rf_firstSpriteTableEntry[RF_NUM_SPRITE_Z_LAYERS];
+extern int rf_demoTics;
+void RFL_CalcTics(void);
 void VL_SDL2_PresentARGB(const uint32_t *argb, int w, int h, const char *title);
 
 static int mode = RFI_Mode_Off, hz = 60;
@@ -365,7 +367,8 @@ static void Present(void)
 void RFI_Frame(void)
 {
 	static bool f12Was;
-	int tics = (in_demoState != IN_Demo_Off) ? 3 : 2;
+	bool inDemo = (in_demoState != IN_Demo_Off);
+	int tics = inDemo ? rf_demoTics : 2;
 	double dur = tics / 70.0;
 	double now = Now();
 
@@ -393,10 +396,19 @@ void RFI_Frame(void)
 			sde->prevUY = sde->curUY;
 		}
 
-	/* keep the game's own clock coherent: exactly `tics` elapsed */
-	SD_SetSpriteSync(tics);
-	SD_SetLastTimeCount(SD_GetLastTimeCount() + tics);
-	SD_SetTimeCount(SD_GetLastTimeCount());
+	if (inDemo)
+	{
+		/* demos: use the vanilla clock (wait for the tick, TimeCount one frame
+		 * ahead) so the playloop dump, which records TimeCount, is unchanged */
+		RFL_CalcTics();
+	}
+	else
+	{
+		/* keep the game's own clock coherent: exactly `tics` elapsed */
+		SD_SetSpriteSync(tics);
+		SD_SetLastTimeCount(SD_GetLastTimeCount() + tics);
+		SD_SetTimeCount(SD_GetLastTimeCount());
+	}
 
 	simFrame++;
 	if (debugStats && simFrame % 25 == 0) fprintf(stderr, "[interp] sim %ld cam %d,%d\n", simFrame, rf_scrollXUnit, rf_scrollYUnit);
