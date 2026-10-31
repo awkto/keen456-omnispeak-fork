@@ -34,7 +34,9 @@ typedef struct RF_SpriteDrawEntry
 	bool maskOnly;
 	int updateCount;
 	int shift;
-	int curUX, curUY, prevUX, prevUY; // SPIKE: unquantised object position (units), this and last sim frame
+#ifdef WITH_RF_INTERP
+	int curUX, curUY, prevUX, prevUY; // Unquantised object position (units), this and last sim frame
+#endif
 	struct RF_SpriteDrawEntry **prevNextPtr; // Pointer to the previous entry's 'next' pointer.
 	struct RF_SpriteDrawEntry *next;
 } RF_SpriteDrawEntry;

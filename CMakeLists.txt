@@ -64,6 +64,7 @@ if(RENDERER STREQUAL "sdl2")
 		src/id_in_sdl.c
 		src/id_sd_sdl.c
 		src/id_vl_sdl2.c
+		src/rf_interp.c
 	)
 	set(OMNISPEAK_PLATFORM_LIBRARIES
 		${SDL2_LIBRARIES}
@@ -71,7 +72,7 @@ if(RENDERER STREQUAL "sdl2")
 	include_directories(
 		${SDL2_INCLUDE_DIRS}
 	)
-	add_definitions(-DWITH_SDL)
+	add_definitions(-DWITH_SDL -DWITH_RF_INTERP)
 elseif(RENDERER STREQUAL "sdl2vk")
 	message(STATUS "Using SDL 2.0 + Vulkan renderer backend")
 	find_package(SDL2 CONFIG)

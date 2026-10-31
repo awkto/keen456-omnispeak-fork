@@ -27,6 +27,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "ck_def.h"
 #include "ck_ep.h"
 #include "ck_play.h"
+#ifdef WITH_RF_INTERP
+#include "rf_interp.h"
+#endif
 
 #include <ctype.h>
 #include <stdarg.h>
@@ -630,7 +633,10 @@ static uint16_t us_randomIndex; // Was 16-bit, even if storing just a 8-bit val
 
 void US_InitRndT(bool randomize)
 {
-	if (getenv("OMNI_SPIKE_CAPTURE")) randomize = false; // SPIKE: deterministic captures
+#ifdef WITH_RF_INTERP
+	if (RFI_DebugDeterministic())
+		randomize = false; // Interpolation debug capture: deterministic runs
+#endif
 	if (randomize)
 	{
 		us_randomIndex = time(0) & 0xFF;

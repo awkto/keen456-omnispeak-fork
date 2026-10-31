@@ -29,6 +29,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "ck_def.h"
 #include "ck_game.h"
 #include "ck_play.h"
+#ifdef WITH_RF_INTERP
+#include "rf_interp.h"
+#endif
 #ifdef WITH_KEEN4
 #include "ck4_ep.h"
 #endif
@@ -584,6 +587,9 @@ int main(int argc, char *argv[])
 		bool overrideCopyProtection = CFG_GetConfigBool("ck6_noCreatureQuestion", false);
 	#endif
 	int swapInterval = CFG_GetConfigInt("swapInterval", 1);
+#ifdef WITH_RF_INTERP
+	RFI_Mode interpMode = (RFI_Mode)CFG_GetConfigEnum("interpolation", rfi_modeStrings, RFI_Mode_Off);
+#endif
 #ifdef CK_ENABLE_PLAYLOOP_DUMPER
 	const char *dumperFilename = NULL;
 #endif
@@ -655,6 +661,26 @@ int main(int argc, char *argv[])
 		{
 			overrideCopyProtection = true;
 		}
+#ifdef WITH_RF_INTERP
+		else if (!CK_Cross_strcasecmp(argv[i], "/INTERP"))
+		{
+			// Optional mode argument; a bare /INTERP means "pixel".
+			interpMode = RFI_Mode_Pixel;
+			for (int m = 0; i + 1 < argc && rfi_modeStrings[m]; ++m)
+			{
+				if (!CK_Cross_strcasecmp(argv[i + 1], rfi_modeStrings[m]))
+				{
+					interpMode = (RFI_Mode)m;
+					++i;
+					break;
+				}
+			}
+		}
+		else if (!CK_Cross_strcasecmp(argv[i], "/NOINTERP"))
+		{
+			interpMode = RFI_Mode_Off;
+		}
+#endif
 #ifdef CK_ENABLE_PLAYLOOP_DUMPER
 		else if (!CK_Cross_strcasecmp(argv[i], "/DUMPFILE"))
 		{
@@ -739,6 +765,9 @@ int main(int argc, char *argv[])
 
 	vl_swapInterval = swapInterval;
 	VL_SetParams(isFullScreen, isAspectCorrected, hasBorder, isIntegerScaled);
+#ifdef WITH_RF_INTERP
+	RFI_Startup(interpMode);
+#endif
 
 	if (overrideCopyProtection)
 		ck6_creatureQuestionDone = true;

@@ -464,8 +464,9 @@ VL_Backend *VL_Impl_GetBackend()
 	return &vl_sdl2_backend;
 }
 
-/* SPIKE (#89): present a pre-composited ARGB frame of arbitrary size. */
-void VL_SDL2_SpikePresent(const uint32_t *argb, int w, int h, const char *title)
+#ifdef WITH_RF_INTERP
+// Present a pre-composited ARGB frame of arbitrary size (used by rf_interp.c).
+void VL_SDL2_PresentARGB(const uint32_t *argb, int w, int h, const char *title)
 {
 	static SDL_Texture *tex;
 	static int tw, th;
@@ -489,3 +490,4 @@ void VL_SDL2_SpikePresent(const uint32_t *argb, int w, int h, const char *title)
 	SDL_RenderCopy(vl_sdl2_renderer, tex, 0, &renderRect);
 	SDL_RenderPresent(vl_sdl2_renderer);
 }
+#endif

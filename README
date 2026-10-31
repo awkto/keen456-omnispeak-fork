@@ -76,6 +76,17 @@ Omnispeak supports several command-line options, some of which are:
 		  of worse frame pacing.)
 	/DEMOFILE <filename>
 		- Plays the demo recorded with Keen's F10+D cheat in filename.
+	/INTERP [off|grid|pixel|subpixel]
+		- Presents frames at the display's refresh rate, interpolating
+		  the camera and sprites between the game's 35 Hz frames.
+		  The game logic is unchanged; it adds one frame of latency.
+		  'pixel' (the default for a bare /INTERP) keeps whole pixels,
+		  'subpixel' uses quarter pixels, 'grid' does not interpolate
+		  (for comparison). F12 cycles modes while running. Only
+		  available with the SDL2 renderers (RENDERER=sdl2 or sdl2sw).
+		  Available as the 'interpolation' config option; default off.
+	/NOINTERP
+		- Disables interpolation (the default).
 
 == CONFIGURATION ==
 

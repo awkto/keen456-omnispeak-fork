@@ -1,23 +1,46 @@
 /*
- * rf_interp.c -- SPIKE (keen456-decomp #89): display-rate presentation over an
- * untouched 35 Hz simulation.
+Omnispeak: A Commander Keen Reimplementation
+Copyright (C) 2026 keen456 contributors
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+*/
+
+/*
+ * rf_interp.c -- display-rate interpolation over an untouched 35 Hz simulation
+ * (keen456-decomp #89 spike, productised in #92).
  *
  * The simulation is not modified. After each sim frame we hold (prev, cur)
  * camera + sprite positions and, for the wall-clock duration of that sim frame,
  * present frames at the display's rate, lerping prev->cur. Costs one sim frame
  * (28.6 ms) of latency.
  *
- * One compositor, three modes (F12 cycles; OMNI_SPIKE_MODE sets the initial one):
- *   0 vanilla  alpha=1, camera X and sprite X on the 2-px EGA grid -- what Keen draws
- *   1 pixel    interpolated, positions snapped to whole 320x200 pixels
- *   2 subpixel interpolated, positions snapped to 1/4 pixel of a 1280x800 frame
+ * Off by default. Enabled with the 'interpolation' config option or /INTERP
+ * on the command line (see README). Modes, cycled live with F12 when enabled:
+ *   grid      alpha=1, camera X and sprite X on the 2-px EGA grid -- what Keen draws
+ *   pixel     interpolated, positions snapped to whole 320x200 pixels
+ *   subpixel  interpolated, positions snapped to 1/4 pixel of a 1280x800 frame
  *
- * Capture (headless, deterministic): OMNI_SPIKE_CAPTURE=<file> writes raw RGB24
- * 1280x800 frames on a virtual display of OMNI_SPIKE_HZ, time advancing by exactly
- * 1/Hz per frame. OMNI_SPIKE_SKIP / OMNI_SPIKE_FRAMES bound the recording.
- * OMNI_SPIKE_SCRIPT="right:0-600,jump:80-90,..." injects input by sim frame.
- *
- * Licensed GPL-2.0-or-later, like Omnispeak.
+ * DEBUG TOOLING (not a user feature; read only when interpolation is enabled):
+ *   OMNI_DEBUG_INTERP_CAPTURE=<file>  headless, deterministic capture: raw RGB24
+ *       1280x800 frames on a virtual display, time advancing exactly 1/Hz per
+ *       frame; RNG seeding is made deterministic.
+ *   OMNI_DEBUG_INTERP_HZ=<n>          virtual display rate for the capture (60).
+ *   OMNI_DEBUG_INTERP_SKIP / _FRAMES  bound the recording; exits when done.
+ *   OMNI_DEBUG_INTERP_LOG=<file.csv>  per-display-frame camera/Keen trace (capture only).
+ *   OMNI_DEBUG_INTERP_SCRIPT="right:0-600,jump:80-90,..."  inject input by sim frame.
+ *   OMNI_DEBUG_INTERP_STATS=1         frame-time/compose stats to stderr + window title.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,6 +53,7 @@
 #include "id_rf.h"
 #include "id_sd.h"
 #include "id_ti.h"
+#include "id_us.h"
 #include "id_vh.h"
 #include "id_vl.h"
 #include "id_vl_private.h"
@@ -51,9 +75,10 @@
 
 extern int rf_scrollXUnit, rf_scrollYUnit;
 extern RF_SpriteDrawEntry *rf_firstSpriteTableEntry[RF_NUM_SPRITE_Z_LAYERS];
-void VL_SDL2_SpikePresent(const uint32_t *argb, int w, int h, const char *title);
+void VL_SDL2_PresentARGB(const uint32_t *argb, int w, int h, const char *title);
 
-static int mode = -1, hz = 60, enabled = -1;
+static int mode = RFI_Mode_Off, hz = 60;
+static bool enabled, debugStats;
 static FILE *capFile;
 static long capSkip, capFrames = -1, dispFrame, simFrame;
 static double frameStart = -1.0, vnow;
@@ -63,7 +88,7 @@ static uint8_t layerBack[LAYER_W * LAYER_H], layerFore[LAYER_W * LAYER_H];
 static uint8_t out8[OUT_W * OUT_H];
 static uint32_t out32[OUT_W * OUT_H];
 static uint8_t out24[OUT_W * OUT_H * 3];
-static const char *modeNames[] = {"vanilla 35fps", "interp pixel", "interp subpixel"};
+const char *rfi_modeStrings[] = {"off", "grid", "pixel", "subpixel", NULL};
 
 /* stats */
 static double lastPresent = -1, statSum, statMin = 1e9, statMax, statT0;
@@ -99,28 +124,46 @@ static void ParseScript(const char *s)
 	}
 }
 
+void RFI_Startup(RFI_Mode m)
+{
+	const char *e;
+	mode = m;
+	enabled = (m != RFI_Mode_Off);
+	if (!enabled)
+		return;
+	if ((e = getenv("OMNI_DEBUG_INTERP_HZ")))
+		hz = atoi(e);
+	if ((e = getenv("OMNI_DEBUG_INTERP_SKIP")))
+		capSkip = atol(e);
+	if ((e = getenv("OMNI_DEBUG_INTERP_FRAMES")))
+		capFrames = atol(e);
+	debugStats = (e = getenv("OMNI_DEBUG_INTERP_STATS")) && atoi(e);
+	ParseScript(getenv("OMNI_DEBUG_INTERP_SCRIPT"));
+	if ((e = getenv("OMNI_DEBUG_INTERP_LOG")))
+	{
+		logFile = fopen(e, "w");
+		if (logFile)
+			fprintf(logFile, "disp,sim,alpha,cam_x_qpx,keen_world_x_qpx,keen_screen_x_qpx\n");
+	}
+	if ((e = getenv("OMNI_DEBUG_INTERP_CAPTURE")))
+	{
+		capFile = fopen(e, "wb");
+		if (!capFile)
+			QuitF("Couldn't open interpolation capture file \"%s\"", e);
+	}
+	CK_Cross_LogMessage(CK_LOG_MSG_NORMAL, "Interpolation: %s (%s, hz=%d, script events=%d)\n", rfi_modeStrings[mode],
+		capFile ? "debug capture" : "realtime", hz, scriptN);
+}
+
 bool RFI_Enabled(void)
 {
-	if (enabled < 0)
-	{
-		const char *e = getenv("OMNI_SPIKE");
-		enabled = (e && atoi(e)) ? 1 : 0;
-		if (!enabled) return false;
-		if ((e = getenv("OMNI_SPIKE_MODE"))) mode = atoi(e); else mode = 2;
-		if ((e = getenv("OMNI_SPIKE_HZ"))) hz = atoi(e);
-		if ((e = getenv("OMNI_SPIKE_SKIP"))) capSkip = atol(e);
-		if ((e = getenv("OMNI_SPIKE_FRAMES"))) capFrames = atol(e);
-		ParseScript(getenv("OMNI_SPIKE_SCRIPT"));
-		if ((e = getenv("OMNI_SPIKE_LOG"))) { logFile = fopen(e, "w"); if (logFile) fprintf(logFile, "disp,sim,alpha,cam_x_qpx,keen_world_x_qpx,keen_screen_x_qpx\n"); }
-		if ((e = getenv("OMNI_SPIKE_CAPTURE")))
-		{
-			capFile = fopen(e, "wb");
-			if (!capFile) { perror(e); exit(1); }
-		}
-		fprintf(stderr, "[spike] on: mode=%d (%s) %s hz=%d script=%d\n", mode, modeNames[mode],
-			capFile ? "CAPTURE" : "realtime", hz, scriptN);
-	}
 	return enabled;
+}
+
+// Debug capture only: make level RNG seeding deterministic.
+bool RFI_DebugDeterministic(void)
+{
+	return enabled && capFile;
 }
 
 void RFI_NoteSprite(RF_SpriteDrawEntry *sde, int unitX, int unitY, bool fresh)
@@ -232,9 +275,9 @@ static void BlitSprite(RF_SpriteDrawEntry *sde, int ox, int oy)
 
 static void Compose(double alpha)
 {
-	int qx = (mode == 0) ? 32 : (mode == 1) ? 16 : 16 / S;
-	int qy = (mode == 0) ? 16 : qx;
-	if (mode == 0) alpha = 1.0;
+	int qx = (mode == RFI_Mode_Grid) ? 32 : (mode == RFI_Mode_Pixel) ? 16 : 16 / S;
+	int qy = (mode == RFI_Mode_Grid) ? 16 : qx;
+	if (mode == RFI_Mode_Grid) alpha = 1.0;
 
 	int camX = Quant(Lerp(prevCamX, rf_scrollXUnit, alpha), qx);
 	int camY = Quant(Lerp(prevCamY, rf_scrollYUnit, alpha), qy);
@@ -283,7 +326,7 @@ static void Present(void)
 			{
 				fclose(capFile);
 				if (logFile) fclose(logFile);
-				fprintf(stderr, "[spike] capture done: %ld display frames, %ld sim frames\n", dispFrame + 1, simFrame);
+				CK_Cross_LogMessage(CK_LOG_MSG_NORMAL, "Interpolation: debug capture done: %ld display frames, %ld sim frames\n", dispFrame + 1, simFrame);
 				exit(0);
 			}
 		}
@@ -304,16 +347,16 @@ static void Present(void)
 		if (dt > statMax) statMax = dt;
 	}
 	lastPresent = t;
-	if (t - statT0 > 1.0 && statN)
+	if (debugStats && t - statT0 > 1.0 && statN)
 	{
-		snprintf(title, sizeof(title), "Omnispeak spike [F12] %s | %.1f fps  frame %.2f ms (min %.2f max %.2f)  compose %.2f ms",
-			modeNames[mode], 1000.0 * statN / statSum, statSum / statN, statMin, statMax, 1000.0 * composeSum / statN);
+		snprintf(title, sizeof(title), "Omnispeak interpolation [F12] %s | %.1f fps  frame %.2f ms (min %.2f max %.2f)  compose %.2f ms",
+			rfi_modeStrings[mode], 1000.0 * statN / statSum, statSum / statN, statMin, statMax, 1000.0 * composeSum / statN);
 		composeSum = 0;
-		fprintf(stderr, "[spike] %s\n", title);
+		fprintf(stderr, "[interp] %s\n", title);
 		statT0 = t; statSum = 0; statN = 0; statMin = 1e9; statMax = 0;
 	}
 	double before = Now();
-	VL_SDL2_SpikePresent(out32, OUT_W, OUT_H, title[0] ? title : NULL);
+	VL_SDL2_PresentARGB(out32, OUT_W, OUT_H, title[0] ? title : NULL);
 	if (Now() - before < 0.001) SDL_Delay(1); /* no vsync (Xvfb etc.): don't spin */
 	dispFrame++;
 }
@@ -356,7 +399,7 @@ void RFI_Frame(void)
 	SD_SetTimeCount(SD_GetLastTimeCount());
 
 	simFrame++;
-	if (getenv("OMNI_SPIKE_DEBUG") && simFrame % 25 == 0) fprintf(stderr, "[spike] sim %ld cam %d,%d\n", simFrame, rf_scrollXUnit, rf_scrollYUnit);
+	if (debugStats && simFrame % 25 == 0) fprintf(stderr, "[interp] sim %ld cam %d,%d\n", simFrame, rf_scrollXUnit, rf_scrollYUnit);
 	for (int i = 0; i < scriptN; ++i)
 	{
 		/* re-assert every frame: level start clears the key table */
@@ -366,8 +409,8 @@ void RFI_Frame(void)
 	bool f12 = IN_GetKeyState(IN_SC_F12);
 	if (f12 && !f12Was)
 	{
-		mode = (mode + 1) % 3;
-		fprintf(stderr, "[spike] mode -> %s\n", modeNames[mode]);
+		mode = (mode == RFI_Mode_Subpixel) ? RFI_Mode_Grid : mode + 1;
+		CK_Cross_LogMessage(CK_LOG_MSG_NORMAL, "Interpolation: mode -> %s\n", rfi_modeStrings[mode]);
 	}
 	f12Was = f12;
 }

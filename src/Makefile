@@ -199,7 +199,7 @@ LDFLAGS ?=
 LIBS ?=
 
 # mandatory source files
-IDOBJECTS = ck_quit.o id_mm.o id_fs.o id_ca.o id_cfg.o id_in.o id_rf.o rf_interp.o id_sd.o id_ti.o id_us_1.o id_us_2.o id_us_textscreen.o id_vh.o id_vl.o id_str.o
+IDOBJECTS = ck_quit.o id_mm.o id_fs.o id_ca.o id_cfg.o id_in.o id_rf.o id_sd.o id_ti.o id_us_1.o id_us_2.o id_us_textscreen.o id_vh.o id_vl.o id_str.o
 CK4OBJECTS = ck4_map.o ck4_obj1.o ck4_obj2.o ck4_obj3.o ck4_misc.o
 CK5OBJECTS = ck5_map.o ck5_obj1.o ck5_obj2.o ck5_obj3.o ck5_misc.o
 CK6OBJECTS = ck6_map.o ck6_obj1.o ck6_obj2.o ck6_obj3.o ck6_misc.o
@@ -350,12 +350,13 @@ ifeq ($(RENDERER), sdl1)
 endif
 
 ifeq ($(RENDERER), sdl2)
-	RENDER_OBJS = id_vl_sdl2.o id_sd_sdl.o id_in_sdl.o
+	RENDER_OBJS = id_vl_sdl2.o id_sd_sdl.o id_in_sdl.o rf_interp.o
+	CXXFLAGS += -DWITH_RF_INTERP
 endif
 
 ifeq ($(RENDERER), sdl2sw)
-	RENDER_OBJS = id_vl_sdl2.o id_sd_sdl.o id_in_sdl.o
-	CXXFLAGS += -DVL_SDL2_REQUEST_SOFTWARE
+	RENDER_OBJS = id_vl_sdl2.o id_sd_sdl.o id_in_sdl.o rf_interp.o
+	CXXFLAGS += -DVL_SDL2_REQUEST_SOFTWARE -DWITH_RF_INTERP
 endif
 
 ifeq ($(RENDERER), sdl2gl)

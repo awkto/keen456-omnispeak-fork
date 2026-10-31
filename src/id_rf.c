@@ -19,7 +19,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 //TODO: id_heads.h
 #include "id_rf.h"
+#ifdef WITH_RF_INTERP
 #include "rf_interp.h"
+#endif
 #include "id_ca.h"
 #include "id_mm.h"
 #include "id_ti.h"
@@ -1243,7 +1245,9 @@ void RF_AddSpriteDraw(RF_SpriteDrawEntry **drawEntry, int unitX, int unitY, int 
 	}
 
 	RF_SpriteDrawEntry *sde = *drawEntry;
-	bool spikeFresh = (sde == NULL);
+#ifdef WITH_RF_INTERP
+	bool rfiFresh = (sde == NULL);
+#endif
 
 	if (sde)
 	{
@@ -1316,7 +1320,9 @@ void RF_AddSpriteDraw(RF_SpriteDrawEntry **drawEntry, int unitX, int unitY, int 
 	sde->updateCount = VL_GetNumBuffers();
 
 	sde->shift = shift;
-	RFI_NoteSprite(sde, unitX, unitY, spikeFresh);
+#ifdef WITH_RF_INTERP
+	RFI_NoteSprite(sde, unitX, unitY, rfiFresh);
+#endif
 
 	*drawEntry = sde;
 }
@@ -1452,11 +1458,14 @@ void RF_Refresh()
 	// 0xef for the X-direction to match EGA keen's 2px horz scrolling.
 	VL_SetScrollCoords(RF_UnitToPixel(rf_scrollXUnit & 0xef), RF_UnitToPixel(rf_scrollYUnit & 0xff));
 	VL_SwapOnNextPresent();
+#ifdef WITH_RF_INTERP
+	// Display-rate interpolation replaces VL_Present + RFL_CalcTics.
 	if (RFI_Enabled())
 	{
 		RFI_Frame();
 		return;
 	}
+#endif
 	VL_Present();
 
 	RFL_CalcTics();
