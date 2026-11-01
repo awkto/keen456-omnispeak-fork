@@ -23,6 +23,20 @@ in place of `VL_Present` and `RFL_CalcTics`:
 In demos (playback, recording, `/DUMPFILE`) `RFL_CalcTics` still runs, so
 `TimeCount` and the playloop dump stay identical to vanilla.
 
+## Snap rules
+
+| Case | Rule | Where (file:line) |
+|---|---|---|
+| Large jump (teleport, warp within a level) | No interpolation: a move larger than `SNAP_UNITS` (48 * 16 = 768 units = 48 px, since 16 units = 1 px) is treated as a teleport, so `Lerp` returns the current value | `src/rf_interp.c:85`, `src/rf_interp.c:252` |
+| Newly created sprite | Drawn at its current position (fresh), with no interpolation: `RFI_NoteSprite` sets `prev = cur` when the sprite draw entry is new | `src/rf_interp.c:227`, `src/id_rf.c:1260`, `src/id_rf.c:1337` |
+| Sprite frame (chunk) change, e.g. walk cycle or state change | Still interpolated: the object position is interpolated, and each chunk's own origin is added at compose time | `src/rf_interp.c:364`, `src/rf_interp.c:365`, `src/rf_interp.c:222` |
+| Level load | `RFI_Reset()` from `RF_NewMap` snaps the camera and all sprites on the first frame of the new map, by dropping the interpolation history | `src/rf_interp.c:237`, `src/id_rf.c:665` |
+| Camera | Interpolated like sprites, with the same `SNAP_UNITS` rule | `src/rf_interp.c:350`, `src/rf_interp.c:252` |
+| Quantisation per mode | `grid` = vanilla 2-px/EGA grid, `pixel` = whole pixels, `subpixel` = 1/4 pixel; applied with `Quant` | `src/rf_interp.c:346`, `src/rf_interp.c:350`, `src/rf_interp.c:367` |
+| Demos and dumps | Game state is never touched; the vanilla clock is kept during demos, with `RFL_CalcTics` instead of the fixed 2-tic step | `src/rf_interp.c:507`, `src/rf_interp.c:511`, `src/id_rf.c:997` |
+
+If you add a rule, add a row here.
+
 ## Audit against #74
 
 Columns: what #74 asks for · on `main` at f7a452d · on `feat/present`.
