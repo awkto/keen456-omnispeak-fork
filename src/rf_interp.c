@@ -95,6 +95,7 @@ void VL_FlipPageNoPresent(void);
 static int mode = RFI_Mode_Off, hz = 60;
 static bool enabled, debugStats, hzForced;
 static FILE *presentLog;
+static bool logsAtexit;
 static double presentT0 = -1, nextPresent;
 static int fastPresents;
 static bool noVsync;
@@ -143,6 +144,15 @@ static void ParseScript(const char *s)
 	}
 }
 
+/* Close the debug logs at exit, so they are flushed and closed on every path
+ * out of the program, not only when a capture runs to completion.
+ * keen456-decomp #74 */
+static void RFI_CloseLogs(void)
+{
+	if (logFile) { fclose(logFile); logFile = NULL; }
+	if (presentLog) { fclose(presentLog); presentLog = NULL; }
+}
+
 void RFI_Startup(RFI_Mode m)
 {
 	const char *e;
@@ -172,13 +182,19 @@ void RFI_Startup(RFI_Mode m)
 	{
 		logFile = fopen(e, "w");
 		if (logFile)
+		{
 			fprintf(logFile, "disp,sim,alpha,cam_x_qpx,keen_world_x_qpx,keen_screen_x_qpx\n");
+			if (!logsAtexit) { atexit(RFI_CloseLogs); logsAtexit = true; }
+		}
 	}
 	if ((e = getenv("OMNI_DEBUG_INTERP_PRESENTS")))
 	{
 		presentLog = fopen(e, "w");
 		if (presentLog)
+		{
 			fprintf(presentLog, "present,host_us,dt_us,sim,alpha\n");
+			if (!logsAtexit) { atexit(RFI_CloseLogs); logsAtexit = true; }
+		}
 	}
 	if ((e = getenv("OMNI_DEBUG_INTERP_CAPTURE")))
 	{
@@ -372,8 +388,11 @@ static void Present(void)
 			if (capFrames > 0 && dispFrame - capSkip + 1 >= capFrames)
 			{
 				fclose(capFile);
+				capFile = NULL;
 				if (logFile) fclose(logFile);
+				logFile = NULL;
 				if (presentLog) fclose(presentLog);
+				presentLog = NULL;
 				CK_Cross_LogMessage(CK_LOG_MSG_NORMAL, "Interpolation: debug capture done: %ld display frames, %ld sim frames\n", dispFrame + 1, simFrame);
 				exit(0);
 			}

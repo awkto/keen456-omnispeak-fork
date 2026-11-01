@@ -11,7 +11,8 @@ then calls `RF_Refresh`. With interpolation on, `RF_Refresh` calls `RFI_Frame`
 in place of `VL_Present` and `RFL_CalcTics`:
 
 1. The sim frame always advances by 2 tics (one vanilla frame at the 70 Hz PIT
-   rate, 28.6 ms). `frameStart += 2/70 s` per sim frame is the accumulator.
+   rate, 28.6 ms), except during demo playback, where it uses the demo tics (3).
+   `frameStart += 2/70 s` per sim frame is the accumulator.
 2. Until wall time reaches `frameStart + 2/70 s`, it composes and presents frames
    at display rate with `alpha = (now - frameStart) / (2/70 s)`. Each frame
    interpolates the camera and every sprite from the previous sim frame to the
@@ -74,8 +75,8 @@ present,host_us,dt_us,sim,alpha
   first present. In an `OMNI_DEBUG_INTERP_CAPTURE` run it is virtual time instead.
 - `dt_us` is the gap to the previous present.
 - `sim` is the sim frame shown: the frame is interpolated from `sim-1` to `sim`.
-- `alpha` is the interpolation factor used. `grid` mode draws with alpha 1, but
-  the log shows the clock's alpha.
+- `alpha` is the interpolation factor used. In `grid` mode the logged alpha is
+  always 1.000.
 
 The file is flushed once per sim frame. Example (sdl2, dummy video, `/INTERP pixel`,
 `/TEDLEVEL 1`, `OMNI_DEBUG_INTERP_SCRIPT=right:20-400`):
@@ -106,6 +107,8 @@ these cases:
   for the rest of the run.
 
 The rate is the current display mode's refresh rate, or 60 if that is unknown.
+`OMNI_DEBUG_INTERP_HZ` must be a positive integer. The pacer only ever runs when
+vsync is off or found missing: it never adds sleeping on top of working vsync.
 
 ## Renderers
 
