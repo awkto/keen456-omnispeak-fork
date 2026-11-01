@@ -151,6 +151,11 @@ int rf_maxTics = 5;
 // Must be 3 (23Hz) for demo compatibility.
 int rf_demoTics = 3;
 
+// keen456-decomp #84 F1: set when an interruption (pause, menu, dialog, ...)
+// ended and the next RFL_CalcTics() should keep the game clock continuous
+// instead of charging the whole wall-clock time of the interruption.
+static bool rf_clockDiscontinuity = false;
+
 // Block dirty state
 #define RF_BUFFER_SIZE (RF_BUFFER_WIDTH_TILES * RF_BUFFER_HEIGHT_TILES)
 uint8_t rf_dirtyBlocks[RF_MAX_BUFFERS][RF_BUFFER_SIZE];
@@ -695,6 +700,13 @@ void RF_ForceRefresh(void)
 	RF_Refresh();
 }
 
+// keen456-decomp #84 F1: mark that an interruption just ended, so the next
+// RFL_CalcTics() continues the game clock rather than jumping over the pause.
+void RF_ClockDiscontinuity(void)
+{
+	rf_clockDiscontinuity = true;
+}
+
 /*
  * Copy a rectangle of tiles, in all planes, from one source coordinate on the map
  * to another destination coordinate
@@ -997,6 +1009,23 @@ void RFL_SmoothScrollLimit(int scrollXdelta, int scrollYdelta)
 
 void RFL_CalcTics()
 {
+	// keen456-decomp #84 F1: if an interruption (pause, menu, dialog, ...) just
+	// ended, continue the game clock as if only rf_minTics had passed, so the
+	// first frame back does not charge the whole wall-clock pause. Demos use the
+	// deterministic branch below and must stay untouched (same in_demoState test).
+	if (rf_clockDiscontinuity)
+	{
+		rf_clockDiscontinuity = false;
+		if (CK_FIX(ClockContinuity) && in_demoState == IN_Demo_Off)
+		{
+			uint32_t newTime = (uint32_t)SD_GetLastTimeCount() + rf_minTics;
+			SD_SetTimeCount(newTime);
+			SD_SetSpriteSync(rf_minTics);
+			SD_SetLastTimeCount(newTime);
+			return;
+		}
+	}
+
 	uint32_t inctime;
 	if ((uint32_t)SD_GetLastTimeCount() > SD_GetTimeCount())
 		SD_SetTimeCount(SD_GetLastTimeCount());
