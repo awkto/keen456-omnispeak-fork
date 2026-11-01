@@ -27,6 +27,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "id_us.h"
 
 #include <stdlib.h>
+#include <stdio.h>
 
 // EGA color palette in RGB format (technically more can be chosen with the VGA)
 const uint8_t VL_EGARGBColorTable[16][3] = {
@@ -1131,4 +1132,51 @@ void VL_Present()
 	vl_lastFrameTime = SD_GetTimeCount();
 	vl_currentBackend->present(vl_emuegavgaadapter.screen, vl_scrollXpixels, vl_scrollYpixels, !vl_swapOnNextPresent);
 	vl_swapOnNextPresent = false;
+}
+
+// keen456-decomp #75
+// Debug-only per-frame dump of the vanilla renderer's visible 320x200 game
+// view, as EGA palette indices 0-15, row-major. Appends exactly 64000 bytes
+// to the file named by OMNI_DEBUG_FRAMES. No effect when that is unset.
+static FILE *rf_debugFrameFile = NULL;
+
+static void RF_DebugDumpFrameClose(void)
+{
+	if (rf_debugFrameFile)
+	{
+		fclose(rf_debugFrameFile);
+		rf_debugFrameFile = NULL;
+	}
+}
+
+void RF_DebugDumpFrame(void)
+{
+	static bool checked = false;
+
+	if (!checked)
+	{
+		checked = true;
+		const char *path = getenv("OMNI_DEBUG_FRAMES");
+		if (path && path[0])
+		{
+			rf_debugFrameFile = fopen(path, "wb");
+			if (rf_debugFrameFile)
+				atexit(RF_DebugDumpFrameClose);
+		}
+	}
+	if (!rf_debugFrameFile)
+		return;
+
+	// The backend presents the 320x200 source rect starting at the current
+	// scroll origin (see VL_Present / VL_SDL2_Present), so that is the region
+	// the player actually sees.
+	const int sx = VL_GetScrollX();
+	const int sy = VL_GetScrollY();
+	uint8_t row[VL_EGAVGA_GFX_WIDTH];
+	for (int y = 0; y < VL_EGAVGA_GFX_HEIGHT; ++y)
+	{
+		for (int x = 0; x < VL_EGAVGA_GFX_WIDTH; ++x)
+			row[x] = (uint8_t)(vl_currentBackend->surfacePGet(vl_emuegavgaadapter.screen, sx + x, sy + y) & 0xF);
+		fwrite(row, 1, VL_EGAVGA_GFX_WIDTH, rf_debugFrameFile);
+	}
 }

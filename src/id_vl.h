@@ -170,6 +170,9 @@ void VL_UpdateRect(int x, int y, int w, int h);
 void VL_SwapOnNextPresent();
 void VL_Present();
 
+// keen456-decomp #75
+void RF_DebugDumpFrame(void);
+
 VL_Backend *VL_Impl_GetBackend(void);
 
 #endif //ID_VL_H

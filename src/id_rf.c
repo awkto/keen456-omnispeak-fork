@@ -1481,5 +1481,13 @@ void RF_Refresh()
 	VL_SwapOnNextPresent();
 	VL_Present();
 
+#ifdef WITH_RF_INTERP
+	// keen456-decomp #75: only dump the vanilla (non-interpolated) frame.
+	if (!RFI_Enabled())
+		RF_DebugDumpFrame();
+#else
+	RF_DebugDumpFrame();
+#endif
+
 	RFL_CalcTics();
 }

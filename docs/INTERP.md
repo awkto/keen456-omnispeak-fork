@@ -124,6 +124,15 @@ The rate is the current display mode's refresh rate, or 60 if that is unknown.
 `OMNI_DEBUG_INTERP_HZ` must be a positive integer. The pacer only ever runs when
 vsync is off or found missing: it never adds sleeping on top of working vsync.
 
+## Frame dumps (pixel compare)
+
+Set `OMNI_DEBUG_FRAMES=<path>` to append the vanilla (non-interpolated) renderer's
+visible 320x200 view to `<path>`, exactly 64000 bytes per `RF_Refresh` as EGA
+palette indices 0-15, row-major. `RF_DebugDumpFrame` (`src/id_vl.c`) reads the
+screen surface's 320x200 rect at the current scroll origin, the same region
+`VL_Present` blits; it is a no-op when the variable is unset, and the file is
+closed via `atexit`.
+
 ## Renderers
 
 The compositor produces a 1280x800 ARGB frame. Each backend only has to show it:
