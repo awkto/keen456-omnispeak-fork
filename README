@@ -148,7 +148,8 @@ fix are written to '<file>.meta'. The dump itself is unchanged.
 
 To add a fix, add one CK_FIX_ENTRY line to the table in src/ck_fix.h (its
 name, whether it affects the simulation, the default for each profile, and a
-description), then guard the change with 'if (CK_FIX(Name))'. Then run
+description), then guard the change with 'if (CK_FIX(Name))'. The source file
+using CK_FIX must #include "ck_fix.h". Then run
 tools/vanilla-guard.sh, which builds a debug binary, plays Keen 4 and Keen 5
 demos 0 and 1 in both profiles and checks that the dumps match the reference
 dumps in tests/ (or a dump from a git ref, with --base <ref>). It needs the

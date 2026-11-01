@@ -38,7 +38,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  * active everywhere.
  *
  * To add a fix: add one CK_FIX_ENTRY line below, then guard the change with
- * 'if (CK_FIX(Name))'. It can then be toggled with /FIX name, /NOFIX name and
+ * 'if (CK_FIX(Name))'. The source file using CK_FIX must #include "ck_fix.h".
+ * It can then be toggled with /FIX name, /NOFIX name and
  * the 'fix_<name>' config option.
  */
 
