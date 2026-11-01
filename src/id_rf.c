@@ -1247,7 +1247,10 @@ void RF_AddSpriteDraw(RF_SpriteDrawEntry **drawEntry, int unitX, int unitY, int 
 
 	RF_SpriteDrawEntry *sde = *drawEntry;
 #ifdef WITH_RF_INTERP
-	bool rfiFresh = (sde == NULL);
+	bool rfiFresh = false;
+	/* vanilla must not run interpolation code (keen456-decomp #75) */
+	if (RFI_Enabled())
+		rfiFresh = (sde == NULL);
 #endif
 
 	if (sde)
@@ -1322,7 +1325,9 @@ void RF_AddSpriteDraw(RF_SpriteDrawEntry **drawEntry, int unitX, int unitY, int 
 
 	sde->shift = shift;
 #ifdef WITH_RF_INTERP
-	RFI_NoteSprite(sde, unitX, unitY, rfiFresh);
+	/* vanilla must not run interpolation code (keen456-decomp #75) */
+	if (RFI_Enabled())
+		RFI_NoteSprite(sde, unitX, unitY, rfiFresh);
 #endif
 
 	*drawEntry = sde;
