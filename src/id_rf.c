@@ -1035,8 +1035,14 @@ void RFL_CalcTics()
 	{
 		if (CK_FIX(StallChargeOnce))
 		{
-			// keen456-decomp #84 F2: charge the clipped time once instead of twice.
-			SD_SetLastTimeCount(SD_GetLastTimeCount() - (SD_GetSpriteSync() - rf_maxTics));
+			// keen456-decomp #84 F2: charge the clipped time once instead of twice:
+			// leave TimeCount alone and let the next frame measure from the clipped
+			// point. Carry at most rf_maxTics over, so a long stall (window drag,
+			// breakpoint) cannot turn into a burst of catch-up frames.
+			int excess = SD_GetSpriteSync() - rf_maxTics;
+			if (excess > rf_maxTics)
+				excess = rf_maxTics;
+			SD_SetLastTimeCount(SD_GetLastTimeCount() - excess);
 			SD_SetSpriteSync(rf_maxTics);
 		}
 		else
