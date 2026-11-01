@@ -100,6 +100,9 @@ static double presentT0 = -1, nextPresent;
 static int fastPresents;
 static bool noVsync;
 static FILE *capFile;
+static FILE *debugFrameFile; /* keen456-decomp #75: OMNI_DEBUG_FRAMES, interpolated */
+static long debugFrameSim = -1;
+static bool debugFrameWarned;
 static long capSkip, capFrames = -1, dispFrame, simFrame;
 static double frameStart = -1.0, vnow;
 static int prevCamX, prevCamY;
@@ -151,6 +154,7 @@ static void RFI_CloseLogs(void)
 {
 	if (logFile) { fclose(logFile); logFile = NULL; }
 	if (presentLog) { fclose(presentLog); presentLog = NULL; }
+	if (debugFrameFile) { fclose(debugFrameFile); debugFrameFile = NULL; }
 }
 
 void RFI_Startup(RFI_Mode m)
@@ -201,6 +205,12 @@ void RFI_Startup(RFI_Mode m)
 		capFile = fopen(e, "wb");
 		if (!capFile)
 			QuitF("Couldn't open interpolation capture file \"%s\"", e);
+	}
+	/* keen456-decomp #75: matching per-frame dump for the interpolated renderer. */
+	if ((e = getenv("OMNI_DEBUG_FRAMES")) && e[0])
+	{
+		debugFrameFile = fopen(e, "wb");
+		if (debugFrameFile && !logsAtexit) { atexit(RFI_CloseLogs); logsAtexit = true; }
 	}
 	CK_Cross_LogMessage(CK_LOG_MSG_NORMAL, "Interpolation: %s (%s, hz=%d, script events=%d)\n", rfi_modeStrings[mode],
 		capFile ? "debug capture" : "realtime", hz, scriptN);
@@ -341,6 +351,48 @@ static void BlitSprite(RF_SpriteDrawEntry *sde, int ox, int oy)
 	}
 }
 
+/* keen456-decomp #75: interpolated counterpart of RF_DebugDumpFrame
+ * (src/id_vl.c). Appends one 64000-byte 320x200 frame of EGA palette indices
+ * per sim frame, downsampling the SxS composited out8 by taking pixel (x*S, y*S)
+ * for x<320, y<200 and masking to 0-15.
+ *
+ * Only meaningful in grid mode, where alpha is forced to 1 so the composed image
+ * is exactly the current sim frame; in pixel/subpixel modes it is a blend, so
+ * warn once on stderr and dump nothing. Called at the end of the first Compose()
+ * of each RFI_Frame call, i.e. after out8 is fully composed for that display
+ * frame (sprites included). That is one dump per sim frame, matching vanilla's
+ * one dump per RF_Refresh.
+ *
+ * OFF-BY-ONE RISK: the dump is tagged with the simFrame counter value *before*
+ * RFI_Frame increments it, so the first dumped image carries simFrame 0 while
+ * vanilla's first dump is frame 1; compare the two files from a common starting
+ * frame, not by absolute index. After a level load RFI_Reset() drops the history
+ * and the first frame has prev==cur, so it still matches vanilla, but a skipped
+ * present at a transition can shift the two runs by one frame. */
+static void RFI_DebugDumpFrame(void)
+{
+	if (!debugFrameFile || simFrame == debugFrameSim)
+		return;
+	debugFrameSim = simFrame;
+	if (mode != RFI_Mode_Grid)
+	{
+		if (!debugFrameWarned)
+		{
+			debugFrameWarned = true;
+			fprintf(stderr, "[interp] OMNI_DEBUG_FRAMES needs grid mode (alpha=1); mode is \"%s\", dumping nothing\n",
+				rfi_modeStrings[mode]);
+		}
+		return;
+	}
+	uint8_t row[320];
+	for (int y = 0; y < 200; ++y)
+	{
+		for (int x = 0; x < 320; ++x)
+			row[x] = (uint8_t)(out8[(y * S) * OUT_W + x * S] & 0xF);
+		fwrite(row, 1, 320, debugFrameFile);
+	}
+}
+
 static void Compose(double alpha)
 {
 	int qx = (mode == RFI_Mode_Grid) ? 32 : (mode == RFI_Mode_Pixel) ? 16 : 16 / S;
@@ -369,6 +421,8 @@ static void Compose(double alpha)
 			BlitSprite(sde, (ux - camX) * S / 16, (uy - camY) * S / 16);
 		}
 	}
+	/* keen456-decomp #75: out8 is now complete for this display frame. */
+	RFI_DebugDumpFrame();
 }
 
 static void LogPresent(double t)

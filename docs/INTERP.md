@@ -133,6 +133,14 @@ screen surface's 320x200 rect at the current scroll origin, the same region
 `VL_Present` blits; it is a no-op when the variable is unset, and the file is
 closed via `atexit`.
 
+The same variable drives the interpolated renderer (`RFI_DebugDumpFrame`,
+`src/rf_interp.c`), which appends one 64000-byte frame per sim frame by
+downsampling the composited 1280x800 image. That only matches the simulation in
+`grid` mode (alpha forced to 1); in the other modes it warns once and dumps
+nothing. To compare the two renderers frame by frame: run the same demo once with
+`/NOINTERP` and once with `/INTERP grid`, both with `OMNI_DEBUG_FRAMES=<path>`,
+then compare the two files (same byte length, 64000 per frame).
+
 ## Renderers
 
 The compositor produces a 1280x800 ARGB frame. Each backend only has to show it:
