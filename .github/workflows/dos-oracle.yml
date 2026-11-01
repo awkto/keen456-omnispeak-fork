@@ -1,0 +1,69 @@
+name: "CI: DOS Oracle (Keen 4 demos)"
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  dos-oracle:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y build-essential libsdl2-dev zstd python3 unzip wget
+
+    - name: Build (Linux, SDL2, debug + playloop dumper)
+      run: make -C src -j4 DEBUG=1 RENDERER=sdl2
+
+    - name: Get Keen 4 v1.4 shareware data
+      run: |
+        mkdir -p keen4-data/raw keen4-data/files
+        ( cd keen4-data/raw && wget -q https://davidgow.net/keen/4keen14.zip && unzip -o 4keen14.zip )
+        for f in EGAGRAPH GAMEMAPS AUDIO; do
+          src=$(find keen4-data/raw -maxdepth 1 -iname "${f}.CK4" | head -n1)
+          test -n "$src" || { echo "missing ${f}.CK4 in 4keen14.zip"; exit 1; }
+          cp "$src" "keen4-data/files/${f}.CK4"
+        done
+        ls -l keen4-data/files
+
+    - name: Compare Keen 4 demo traces against the DOS oracle
+      run: |
+        set -u
+        BIN="$PWD/bin/omnispeak"
+        GOLDEN="$PWD/tests/dos-golden"
+        fail=0
+        for n in 0 1 2 3 4; do
+          for mode in nointerp interp; do
+            if [ "$mode" = nointerp ]; then mode_args="/NOINTERP"; else mode_args="/INTERP pixel"; fi
+            rundir=$(mktemp -d)
+            cp keen4-data/files/*.CK4 "$rundir/"
+            cp data/keen4/* "$rundir/"
+            if ( cd "$rundir" && SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
+                 timeout 300 "$BIN" /EPISODE 4 /PLAYDEMO "$n" /DUMPFILE out.trc $mode_args ); then
+              zstd -d -c "$GOLDEN/k4-d${n}.trc.zst" > "$rundir/golden.trc"
+              if python3 "$GOLDEN/tracecmp.py" cmp -e 4 "$rundir/golden.trc" "$rundir/out.trc"; then
+                echo "PASS: demo $n mode $mode"
+              else
+                echo "FAIL: demo $n mode $mode (trace mismatch)"
+                fail=1
+              fi
+            else
+              echo "FAIL: demo $n mode $mode (engine run failed or timed out)"
+              fail=1
+            fi
+            rm -rf "$rundir"
+          done
+        done
+        if [ "$fail" -ne 0 ]; then
+          echo "DOS oracle comparison FAILED"
+          exit 1
+        fi
+        echo "All Keen 4 demo traces match the DOS oracle"
