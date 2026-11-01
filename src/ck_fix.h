@@ -46,6 +46,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 //            Id,            name,            sim,   vanilla, enhanced, description
 #define CK_FIX_TABLE \
 	CK_FIX_ENTRY(Interpolation, "interpolation", false, false, true, "Display-rate interpolation (SDL2 renderers only, see /INTERP)") \
+	CK_FIX_ENTRY(StallChargeOnce, "stall-charge-once", true, false, true, "After a stall longer than 5 tics, charge the clipped time once instead of twice (keen456-decomp #84 F2)") \
 	CK_FIX_ENTRY(Example, "example", false, false, true, "Example entry: logs one line at startup. Copy it to add a fix.")
 
 typedef enum CK_FixId

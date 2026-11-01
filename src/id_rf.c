@@ -32,6 +32,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "ck_cross.h"
 #include "ck_ep.h"
 #include "ck_play.h"
+#include "ck_fix.h"
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -1032,8 +1033,17 @@ void RFL_CalcTics()
 	// (Which could cause the physics to be pretty broken.)
 	if (SD_GetSpriteSync() > rf_maxTics)
 	{
-		SD_SetTimeCount(SD_GetTimeCount() - (SD_GetSpriteSync() - rf_maxTics));
-		SD_SetSpriteSync(rf_maxTics);
+		if (CK_FIX(StallChargeOnce))
+		{
+			// keen456-decomp #84 F2: charge the clipped time once instead of twice.
+			SD_SetLastTimeCount(SD_GetLastTimeCount() - (SD_GetSpriteSync() - rf_maxTics));
+			SD_SetSpriteSync(rf_maxTics);
+		}
+		else
+		{
+			SD_SetTimeCount(SD_GetTimeCount() - (SD_GetSpriteSync() - rf_maxTics));
+			SD_SetSpriteSync(rf_maxTics);
+		}
 	}
 }
 
