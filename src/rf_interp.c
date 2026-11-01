@@ -219,6 +219,14 @@ bool RFI_DebugDeterministic(void)
 
 void RFI_NoteSprite(RF_SpriteDrawEntry *sde, int unitX, int unitY, bool fresh)
 {
+	/* keen456-decomp #76: if the sprite chunk changed since the previous sim
+	 * frame, the graphic (and thus its hotspot/origin) changed too, so
+	 * interpolating the position across the swap would smear. Treat a chunk
+	 * change as a fresh sprite (snap) for this frame. */
+	if (sde->chunk != sde->prevChunk)
+		fresh = true;
+	sde->prevChunk = sde->chunk;
+
 	sde->curUX = unitX;
 	sde->curUY = unitY;
 	if (fresh)
@@ -226,6 +234,21 @@ void RFI_NoteSprite(RF_SpriteDrawEntry *sde, int unitX, int unitY, bool fresh)
 		sde->prevUX = unitX;
 		sde->prevUY = unitY;
 	}
+}
+
+/* keen456-decomp #76: called when a new map/level is set up for rendering.
+ * Drop the interpolation history so the next composed frame snaps the camera
+ * and every sprite into place instead of interpolating across the level load. */
+void RFI_Reset(void)
+{
+	havePrev = false;
+	for (int z = 0; z < RF_NUM_SPRITE_Z_LAYERS; ++z)
+		for (RF_SpriteDrawEntry *sde = rf_firstSpriteTableEntry[z]; sde; sde = sde->next)
+		{
+			sde->prevUX = sde->curUX;
+			sde->prevUY = sde->curUY;
+			sde->prevChunk = sde->chunk;
+		}
 }
 
 static inline int FloorDiv(int a, int b) { return (a >= 0) ? a / b : -((-a + b - 1) / b); }

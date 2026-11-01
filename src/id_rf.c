@@ -657,6 +657,13 @@ void RF_NewMap(void)
 
 	SD_SetLastTimeCount(SD_GetTimeCount());
 	SD_SetSpriteSync(1);
+
+#ifdef WITH_RF_INTERP
+	/* keen456-decomp #76: a level load/warp must not be interpolated: snap the
+	 * camera and sprites on the first composed frame of the new map. */
+	if (RFI_Enabled())
+		RFI_Reset();
+#endif
 }
 
 void RF_RenderTile16(int x, int y, int tile)

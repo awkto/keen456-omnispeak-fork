@@ -36,6 +36,7 @@ typedef struct RF_SpriteDrawEntry
 	int shift;
 #ifdef WITH_RF_INTERP
 	int curUX, curUY, prevUX, prevUY; // Unquantised object position (units), this and last sim frame
+	int prevChunk; // Sprite chunk at the previous sim frame (keen456-decomp #76)
 #endif
 	struct RF_SpriteDrawEntry **prevNextPtr; // Pointer to the previous entry's 'next' pointer.
 	struct RF_SpriteDrawEntry *next;

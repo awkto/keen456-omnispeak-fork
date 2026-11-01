@@ -40,6 +40,7 @@ void RFI_Startup(RFI_Mode mode);
 bool RFI_Enabled(void);
 bool RFI_DebugDeterministic(void);
 void RFI_NoteSprite(RF_SpriteDrawEntry *sde, int unitX, int unitY, bool fresh);
+void RFI_Reset(void); // keen456-decomp #76
 void RFI_Frame(void);
 
 #endif
