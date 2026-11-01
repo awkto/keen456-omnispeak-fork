@@ -379,6 +379,7 @@ void CK_ItemCheat()
 	VH_UpdateScreen();
 	
 	IN_WaitButton();
+	RF_ClockDiscontinuity(); // keen456-decomp #84 F1
 	RF_ForceRefresh();
 	ck_gameState.numShots = 99;
 	ck_gameState.numLives++;
@@ -1114,6 +1115,7 @@ void CK_CheckKeys()
 #endif
 	{
 		CK_ShowStatusWindow();
+		RF_ClockDiscontinuity(); // keen456-decomp #84 F1
 		RF_ForceRefresh(); // Reanimate the tiles
 		SD_SetLastTimeCount(SD_GetTimeCount());
 	}
@@ -1146,6 +1148,7 @@ void CK_CheckKeys()
 		US_PrintCentered(in_PausedMessage);
 		VH_UpdateScreen();
 		IN_WaitButton();
+		RF_ClockDiscontinuity(); // keen456-decomp #84 F1
 		RF_ForceRefresh();
 		in_Paused = false;
 		in_PausedMessage = CK_STRING(ck_str_paused);
@@ -1165,6 +1168,7 @@ void CK_CheckKeys()
 		{
 			ck_scoreBoxObj->user1 = ck_scoreBoxObj->user2 = ck_scoreBoxObj->user3 = ck_scoreBoxObj->user4 = -1;
 		}
+		RF_ClockDiscontinuity(); // keen456-decomp #84 F1
 		RF_ForceRefresh();
 	}
 #endif
@@ -1243,7 +1247,10 @@ void CK_CheckKeys()
 			if (ck_startingDifficulty)
 				ck_gameState.levelState = LS_ResetGame;
 			else if (!ck_startingSavedGame)
+			{
+				RF_ClockDiscontinuity(); // keen456-decomp #84 F1
 				RF_ForceRefresh();
+			}
 
 			if (load_game_error)
 			{
@@ -1271,6 +1278,7 @@ void CK_CheckKeys()
 	{
 		if (ck_debugActive && CK_DebugKeys())
 		{
+			RF_ClockDiscontinuity(); // keen456-decomp #84 F1
 			RF_ForceRefresh();
 			SD_SetLastTimeCount(SD_GetTimeCount());
 		}

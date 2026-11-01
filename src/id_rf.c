@@ -32,6 +32,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "ck_cross.h"
 #include "ck_ep.h"
 #include "ck_play.h"
+#include "ck_fix.h"
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -149,6 +150,11 @@ int rf_maxTics = 5;
 // Number of ticks per frame during demo record/playback.
 // Must be 3 (23Hz) for demo compatibility.
 int rf_demoTics = 3;
+
+// keen456-decomp #84 F1: set when an interruption (pause, menu, dialog, ...)
+// ended and the next RFL_CalcTics() should keep the game clock continuous
+// instead of charging the whole wall-clock time of the interruption.
+static bool rf_clockDiscontinuity = false;
 
 // Block dirty state
 #define RF_BUFFER_SIZE (RF_BUFFER_WIDTH_TILES * RF_BUFFER_HEIGHT_TILES)
@@ -694,6 +700,13 @@ void RF_ForceRefresh(void)
 	RF_Refresh();
 }
 
+// keen456-decomp #84 F1: mark that an interruption just ended, so the next
+// RFL_CalcTics() continues the game clock rather than jumping over the pause.
+void RF_ClockDiscontinuity(void)
+{
+	rf_clockDiscontinuity = true;
+}
+
 /*
  * Copy a rectangle of tiles, in all planes, from one source coordinate on the map
  * to another destination coordinate
@@ -996,6 +1009,23 @@ void RFL_SmoothScrollLimit(int scrollXdelta, int scrollYdelta)
 
 void RFL_CalcTics()
 {
+	// keen456-decomp #84 F1: if an interruption (pause, menu, dialog, ...) just
+	// ended, continue the game clock as if only rf_minTics had passed, so the
+	// first frame back does not charge the whole wall-clock pause. Demos use the
+	// deterministic branch below and must stay untouched (same in_demoState test).
+	if (rf_clockDiscontinuity)
+	{
+		rf_clockDiscontinuity = false;
+		if (CK_FIX(ClockContinuity) && in_demoState == IN_Demo_Off)
+		{
+			uint32_t newTime = (uint32_t)SD_GetLastTimeCount() + rf_minTics;
+			SD_SetTimeCount(newTime);
+			SD_SetSpriteSync(rf_minTics);
+			SD_SetLastTimeCount(newTime);
+			return;
+		}
+	}
+
 	uint32_t inctime;
 	if ((uint32_t)SD_GetLastTimeCount() > SD_GetTimeCount())
 		SD_SetTimeCount(SD_GetLastTimeCount());
@@ -1032,8 +1062,23 @@ void RFL_CalcTics()
 	// (Which could cause the physics to be pretty broken.)
 	if (SD_GetSpriteSync() > rf_maxTics)
 	{
-		SD_SetTimeCount(SD_GetTimeCount() - (SD_GetSpriteSync() - rf_maxTics));
-		SD_SetSpriteSync(rf_maxTics);
+		if (CK_FIX(StallChargeOnce))
+		{
+			// keen456-decomp #84 F2: charge the clipped time once instead of twice:
+			// leave TimeCount alone and let the next frame measure from the clipped
+			// point. Carry at most rf_maxTics over, so a long stall (window drag,
+			// breakpoint) cannot turn into a burst of catch-up frames.
+			int excess = SD_GetSpriteSync() - rf_maxTics;
+			if (excess > rf_maxTics)
+				excess = rf_maxTics;
+			SD_SetLastTimeCount(SD_GetLastTimeCount() - excess);
+			SD_SetSpriteSync(rf_maxTics);
+		}
+		else
+		{
+			SD_SetTimeCount(SD_GetTimeCount() - (SD_GetSpriteSync() - rf_maxTics));
+			SD_SetSpriteSync(rf_maxTics);
+		}
 	}
 }
 
