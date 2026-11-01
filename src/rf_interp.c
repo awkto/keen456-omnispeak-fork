@@ -219,14 +219,9 @@ bool RFI_DebugDeterministic(void)
 
 void RFI_NoteSprite(RF_SpriteDrawEntry *sde, int unitX, int unitY, bool fresh)
 {
-	/* keen456-decomp #76: if the sprite chunk changed since the previous sim
-	 * frame, the graphic (and thus its hotspot/origin) changed too, so
-	 * interpolating the position across the swap would smear. Treat a chunk
-	 * change as a fresh sprite (snap) for this frame. */
-	if (sde->chunk != sde->prevChunk)
-		fresh = true;
-	sde->prevChunk = sde->chunk;
-
+	/* keen456-decomp #76: sprite-frame (chunk) changes are NOT a reason to snap:
+	 * we interpolate the object's position and apply each chunk's own origin
+	 * at compose time, so walk cycles stay smooth. */
 	sde->curUX = unitX;
 	sde->curUY = unitY;
 	if (fresh)
@@ -247,7 +242,6 @@ void RFI_Reset(void)
 		{
 			sde->prevUX = sde->curUX;
 			sde->prevUY = sde->curUY;
-			sde->prevChunk = sde->chunk;
 		}
 }
 
