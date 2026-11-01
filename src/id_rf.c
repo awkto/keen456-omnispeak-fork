@@ -554,7 +554,8 @@ void RFL_AnimateTiles()
 	{
 		rf_animTileTimers[i].timeToSwitch -= SD_GetSpriteSync();
 
-		if (rf_animTileTimers[i].timeToSwitch <= 0)
+		// DOS uses while here (ID_RF.C:944): several steps per refresh when tics > speed (keen456-decomp #95)
+		while (rf_animTileTimers[i].timeToSwitch <= 0)
 		{
 			if (rf_animTileTimers[i].tileNumber & 0x8000)
 			{
