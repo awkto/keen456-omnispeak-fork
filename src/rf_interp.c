@@ -404,7 +404,8 @@ static void Present(void)
 		statT0 = t; statSum = 0; statN = 0; statMin = 1e9; statMax = 0;
 	}
 	/* No vsync to block on: sleep until the next refresh slot instead of spinning. */
-	if (hzForced || !vl_swapInterval || noVsync)
+	/* Never force pacing on top of vsync: only pace when vsync is off or missing (keen456-decomp #74). */
+	if (!vl_swapInterval || noVsync)
 	{
 		double wait = nextPresent - Now();
 		if (wait > 0.0005)
@@ -412,16 +413,17 @@ static void Present(void)
 		double now = Now();
 		nextPresent = CK_Cross_max(nextPresent + 1.0 / hz, now);
 	}
-	static double lastAfter;
 	double before = Now();
 	VL_PresentARGB(out32, OUT_W, OUT_H, title[0] ? title : NULL);
 	double after = Now();
-	/* Presents that never block, or come faster than the display refreshes,
-	 * mean vsync isn't pacing us: from then on, pace by sleeping. */
-	fastPresents = (after - before < 0.0005 || after - lastAfter < 0.75 / hz) ? fastPresents + 1 : 0;
-	if (fastPresents >= 8)
-		noVsync = true;
-	lastAfter = after;
+	/* Only probe for missing vsync when the user actually requested vsync (keen456-decomp #74). */
+	if (vl_swapInterval)
+	{
+		/* Presents that never block mean vsync isn't pacing us: from then on, pace by sleeping. */
+		fastPresents = (after - before < 0.0005) ? fastPresents + 1 : 0; /* only non-blocking presents count (keen456-decomp #74) */
+		if (fastPresents >= 8)
+			noVsync = true;
+	}
 	LogPresent(after);
 	dispFrame++;
 }
