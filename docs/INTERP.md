@@ -33,6 +33,7 @@ In demos (playback, recording, `/DUMPFILE`) `RFL_CalcTics` still runs, so
 | Level load | `RFI_Reset()` from `RF_NewMap` snaps the camera and all sprites on the first frame of the new map, by dropping the interpolation history | `src/rf_interp.c:237`, `src/id_rf.c:665` |
 | Camera | Interpolated like sprites, with the same `SNAP_UNITS` rule | `src/rf_interp.c:350`, `src/rf_interp.c:252` |
 | Quantisation per mode | `grid` = vanilla 2-px/EGA grid, `pixel` = whole pixels, `subpixel` = 1/4 pixel; applied with `Quant` | `src/rf_interp.c:346`, `src/rf_interp.c:350`, `src/rf_interp.c:367` |
+| Keen riding a platform (`pixel`/`subpixel` only; `grid` unchanged) | Keen is drawn at the platform's quantised position plus `Quant(Lerp(relPrev, relCur))`, the interpolated Keen-minus-platform offset, so independent rounding cannot jitter him on the platform (keen456-decomp #85). Falls back to the normal path if either sprite or the relative offset would snap (`SNAP_UNITS`), or the platform is not drawn this frame | `src/rf_interp.c` (`Compose`) |
 | Demos and dumps | Game state is never touched; the vanilla clock is kept during demos, with `RFL_CalcTics` instead of the fixed 2-tic step | `src/rf_interp.c:507`, `src/rf_interp.c:511`, `src/id_rf.c:997` |
 
 If you add a rule, add a row here.

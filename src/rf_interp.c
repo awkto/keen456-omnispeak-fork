@@ -405,6 +405,36 @@ static void Compose(double alpha)
 
 	logCamX = camX * S / 16; logAlpha = alpha;
 	logPlat = false;
+
+	/* keen456-decomp #85: pixel/subpixel only. A riding Keen is drawn at the platform's quantised
+	 * position plus his own interpolated+quantised offset from it, so independent rounding of the two
+	 * cannot make him jitter on the platform. Find the platform's entry (it must be drawn this frame). */
+	RF_SpriteDrawEntry *platSde = NULL;
+	int platDX = 0, platDY = 0, platOX = 0, platOY = 0;
+	if (mode != RFI_Mode_Grid && ck_keenObj && ck_keenObj->sde && ck_keenState.platform && ck_keenState.platform->sde)
+	{
+		RF_SpriteDrawEntry *p = ck_keenState.platform->sde, *k = ck_keenObj->sde;
+		bool pFound = false, kFound = false;
+		for (int z = 0; z < RF_NUM_SPRITE_Z_LAYERS; ++z)
+			for (RF_SpriteDrawEntry *sde = rf_firstSpriteTableEntry[z]; sde; sde = sde->next)
+			{
+				if (sde == p) pFound = true;
+				if (sde == k) kFound = true;
+			}
+		/* either sprite snapping (teleport, level reset) -> normal path */
+		if (pFound && kFound && p != k &&
+			abs(p->curUX - p->prevUX) <= SNAP_UNITS && abs(p->curUY - p->prevUY) <= SNAP_UNITS &&
+			abs(k->curUX - k->prevUX) <= SNAP_UNITS && abs(k->curUY - k->prevUY) <= SNAP_UNITS &&
+			abs((k->curUX - p->curUX) - (k->prevUX - p->prevUX)) <= SNAP_UNITS &&
+			abs((k->curUY - p->curUY) - (k->prevUY - p->prevUY)) <= SNAP_UNITS)
+		{
+			VH_SpriteTableEntry pe = VH_GetSpriteTableEntry(p->chunk - ca_gfxInfoE.offSprites);
+			platOX = pe.originX; platOY = pe.originY;
+			platDX = Quant(Lerp(p->prevUX, p->curUX, alpha) + platOX, qx);
+			platDY = Quant(Lerp(p->prevUY, p->curUY, alpha) + platOY, qy);
+			platSde = p;
+		}
+	}
 	BuildLayers(originTX, originTY);
 	BlitLayer(layerBack, offX, offY, false);
 	for (int z = 0; z < RF_NUM_SPRITE_Z_LAYERS; ++z)
@@ -417,6 +447,12 @@ static void Compose(double alpha)
 			int uy = Lerp(sde->prevUY, sde->curUY, alpha) + ste.originY;
 			/* world-locked snapping: sprites sit on the same grid as the tiles */
 			ux = Quant(ux, qx); uy = Quant(uy, qy);
+			if (platSde && sde == ck_keenObj->sde)
+			{
+				int rx = Lerp(sde->prevUX - platSde->prevUX, sde->curUX - platSde->curUX, alpha) + ste.originX - platOX;
+				int ry = Lerp(sde->prevUY - platSde->prevUY, sde->curUY - platSde->curUY, alpha) + ste.originY - platOY;
+				ux = platDX + Quant(rx, qx); uy = platDY + Quant(ry, qy);
+			}
 			if (mode == RFI_Mode_Grid)
 			{
 				/* Vanilla (RF_AddSpriteDraw) only has as many pre-shifted copies as the
