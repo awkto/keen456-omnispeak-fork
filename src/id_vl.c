@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "id_ca.h"
 #include "id_mm.h"
 #include "id_rf.h"
+#include "id_sd.h"
 #include "id_vl_private.h"
 
 #include "ck_cross.h"
@@ -161,35 +162,37 @@ void VL_SetPalette(uint8_t *palette)
 
 // keen456-decomp #78: one fade, stepping through vl_palette[] in the given
 // order. Vanilla delays 6 tics after each present, so a blocking vsync makes
-// every step longer than 6/70 s. With time-based-fades the delay is measured
-// against an absolute deadline, so the present time is absorbed into it.
+// every step longer than 6/70 s. With time-based-fades each step waits for an
+// absolute deadline on the 70 Hz game clock instead, absorbing the present time.
 static void VL_FadeSteps(int first, int dir)
 {
-	const char *dbg = getenv("OMNI_DEBUG_FADES");
-	const char *dbgPresent = dbg ? getenv("OMNI_DEBUG_FADES_PRESENT_MS") : NULL;
-	bool timeBased = CK_FIX(TimeBasedFades);
-	uint64_t freq = SDL_GetPerformanceFrequency();
-	uint64_t start = SDL_GetPerformanceCounter();
+	if (!CK_FIX(TimeBasedFades))
+	{
+		// Vanilla.
+		for (int n = 0, i = first; n < 4; n++, i += dir)
+		{
+			vl_palette[i][16] = vl_border_color;
+			VL_SetPaletteAndBorderColor(vl_palette[i]);
+			VL_Present();
+			VL_DelayTics(6);
+		}
+		return;
+	}
+	const char *dbgPresent = getenv("OMNI_DEBUG_FADES_PRESENT_TICS"); // debug: simulate a blocking present
+	uint32_t start = SD_GetTimeCount();
 	for (int n = 0, i = first; n < 4; n++, i += dir)
 	{
 		vl_palette[i][16] = vl_border_color;
 		VL_SetPaletteAndBorderColor(vl_palette[i]);
 		VL_Present();
-		if (dbgPresent) // debug: simulate a blocking vsync under the dummy driver
-			SDL_Delay(atoi(dbgPresent));
-		if (timeBased)
-		{
-			uint64_t deadline = start + (uint64_t)(n + 1) * 6 * freq / 70;
-			uint64_t now = SDL_GetPerformanceCounter();
-			if (now < deadline)
-				SDL_Delay((uint32_t)((deadline - now) * 1000 / freq));
-		}
-		else
-			VL_DelayTics(6);
+		if (dbgPresent)
+			VL_DelayTics(atoi(dbgPresent));
+		int32_t left = (int32_t)(start + 6 * (n + 1) - SD_GetTimeCount());
+		if (left > 0)
+			VL_DelayTics(left);
 	}
-	if (dbg)
-		fprintf(stderr, "fade: %s timeBased=%d %.1f ms\n", dir < 0 ? "to-black" : "from-black", timeBased,
-			(double)(SDL_GetPerformanceCounter() - start) * 1000.0 / freq);
+	if (getenv("OMNI_DEBUG_FADES"))
+		fprintf(stderr, "fade (time-based): %u tics\n", (unsigned)(SD_GetTimeCount() - start));
 }
 
 void VL_FadeToBlack(void)

@@ -148,8 +148,6 @@ vsynced display every step also costs up to one refresh and the fade gets
 longer as the refresh rate drops. The `time-based-fades` fix (presentation
 only, off in vanilla) schedules each step against an absolute deadline of
 6/70 s per step from the start of the fade, so the fade lasts about 343 ms
-whatever the refresh rate (keen456-decomp #78). `OMNI_DEBUG_FADES=1` logs each
-fade's wall time to stderr; `OMNI_DEBUG_FADES_PRESENT_MS=<n>` adds an n ms
 sleep after each fade present to simulate a blocking vsync.
 
 ## Renderers
