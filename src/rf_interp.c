@@ -117,6 +117,7 @@ static double lastPresent = -1, statSum, statMin = 1e9, statMax, statT0;
 static int statN;
 static double composeSum;
 static FILE *logFile;
+static int logCamY;
 static int logCamX, logKeenX, logKeenWorldX, logKeenY, logPlatX, logPlatY;
 static bool logPlat;
 static double logAlpha;
@@ -187,7 +188,7 @@ void RFI_Startup(RFI_Mode m)
 		logFile = fopen(e, "w");
 		if (logFile)
 		{
-			fprintf(logFile, "disp,sim,alpha,cam_x_qpx,keen_world_x_qpx,keen_screen_x_qpx,keen_screen_y,plat_screen_x,plat_screen_y\n");
+			fprintf(logFile, "disp,sim,alpha,cam_x_qpx,keen_world_x_qpx,keen_screen_x_qpx,keen_screen_y,plat_screen_x,plat_screen_y,cam_y_qpx,sim_cam_x_u,sim_cam_y_u\n");
 			if (!logsAtexit) { atexit(RFI_CloseLogs); logsAtexit = true; }
 		}
 	}
@@ -403,7 +404,7 @@ static void Compose(double alpha)
 	int originTX = FloorDiv(camX, 256) - 1, originTY = FloorDiv(camY, 256) - 1;
 	int offX = (camX - originTX * 256) * S / 16, offY = (camY - originTY * 256) * S / 16;
 
-	logCamX = camX * S / 16; logAlpha = alpha;
+	logCamX = camX * S / 16; logCamY = camY * S / 16; logAlpha = alpha;
 	logPlat = false;
 
 	/* keen456-decomp #85: pixel/subpixel only. A riding Keen is drawn at the platform's quantised
@@ -493,8 +494,9 @@ static void Present(void)
 	{
 		if (logFile) {
 			fprintf(logFile, "%ld,%ld,%.3f,%d,%d,%d,%d,", dispFrame, simFrame, logAlpha, logCamX, logKeenWorldX, logKeenX, logKeenY);
-			if (logPlat && ck_keenState.platform) fprintf(logFile, "%d,%d\n", logPlatX, logPlatY);
-			else fprintf(logFile, ",\n");
+			if (logPlat && ck_keenState.platform) fprintf(logFile, "%d,%d", logPlatX, logPlatY);
+			else fprintf(logFile, ",");
+			fprintf(logFile, ",%d,%d,%d\n", logCamY, rf_scrollXUnit, rf_scrollYUnit);
 		}
 		LogPresent(vnow);
 		if (dispFrame >= capSkip)
