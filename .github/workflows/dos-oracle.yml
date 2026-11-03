@@ -67,3 +67,37 @@ jobs:
           exit 1
         fi
         echo "All Keen 4 demo traces match the DOS oracle"
+
+    - name: "Pixel compare: interpolated grid mode vs vanilla renderer (Keen 4 demos)"
+      run: |
+        set -u
+        BIN="$PWD/bin/omnispeak"
+        FRAMECMP="$PWD/tools/framecmp.py"
+        fail=0
+        for n in 0 1 2 3 4; do
+          rundir=$(mktemp -d)
+          cp keen4-data/files/*.CK4 "$rundir/"
+          cp data/keen4/* "$rundir/"
+          ok=1
+          if ! ( cd "$rundir" && SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy OMNI_DEBUG_FRAMES=van.bin \
+                 timeout 300 "$BIN" /EPISODE 4 /PLAYDEMO "$n" /NOINTERP ); then
+            echo "FAIL: demo $n (vanilla run failed or timed out)"
+            ok=0
+          elif ! ( cd "$rundir" && SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy OMNI_DEBUG_FRAMES=grid.bin \
+                 timeout 300 "$BIN" /EPISODE 4 /PLAYDEMO "$n" /INTERP grid ); then
+            echo "FAIL: demo $n (grid run failed or timed out)"
+            ok=0
+          elif python3 "$FRAMECMP" "$rundir/van.bin" "$rundir/grid.bin"; then
+            echo "PASS: demo $n (grid frames identical to vanilla)"
+          else
+            echo "FAIL: demo $n (pixel mismatch)"
+            ok=0
+          fi
+          [ "$ok" -eq 1 ] || fail=1
+          rm -rf "$rundir"
+        done
+        if [ "$fail" -ne 0 ]; then
+          echo "Pixel comparison FAILED"
+          exit 1
+        fi
+        echo "Interpolated grid mode matches the vanilla renderer on all Keen 4 demos"
