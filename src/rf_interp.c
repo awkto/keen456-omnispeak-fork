@@ -69,6 +69,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "id_vl.h"
 #include "id_vl_private.h"
 #include "ck_cross.h"
+#include "ck_fix.h"
 #include "rf_interp.h"
 #include "ck_def.h"
 #include "ck_play.h"
@@ -105,6 +106,13 @@ static bool debugFrameWarned;
 static long capSkip, capFrames = -1, dispFrame, simFrame;
 static double frameStart = -1.0, vnow;
 static int prevCamX, prevCamY;
+/* keen456-decomp #86: camera-smoothing state (displayed camera D, velocity V, last target T; units) */
+static bool smoothValid;
+static int smoothMode = -1;
+static double smoothD[2], smoothV[2], smoothT[2], smoothTime;
+#define SMOOTH_TAU 0.050
+#define SMOOTH_PULL 0.100
+#define SMOOTH_MAX_DEV (6 * 16)
 static bool havePrev;
 static uint8_t layerBack[LAYER_W * LAYER_H], layerFore[LAYER_W * LAYER_H];
 static uint8_t out8[OUT_W * OUT_H];
@@ -120,6 +128,7 @@ static FILE *logFile;
 static int logCamY;
 static int logCamX, logKeenX, logKeenWorldX, logKeenY, logPlatX, logPlatY;
 static bool logPlat;
+static int logDevX, logDevY;
 static double logAlpha;
 
 typedef struct { int key, from, to; } ScriptEv;
@@ -188,7 +197,7 @@ void RFI_Startup(RFI_Mode m)
 		logFile = fopen(e, "w");
 		if (logFile)
 		{
-			fprintf(logFile, "disp,sim,alpha,cam_x_qpx,keen_world_x_qpx,keen_screen_x_qpx,keen_screen_y,plat_screen_x,plat_screen_y,cam_y_qpx,sim_cam_x_u,sim_cam_y_u\n");
+			fprintf(logFile, "disp,sim,alpha,cam_x_qpx,keen_world_x_qpx,keen_screen_x_qpx,keen_screen_y,plat_screen_x,plat_screen_y,cam_y_qpx,sim_cam_x_u,sim_cam_y_u,cam_dev_x_u,cam_dev_y_u\n");
 			if (!logsAtexit) { atexit(RFI_CloseLogs); logsAtexit = true; }
 		}
 	}
@@ -248,6 +257,7 @@ void RFI_NoteSprite(RF_SpriteDrawEntry *sde, int unitX, int unitY, bool fresh)
 void RFI_Reset(void)
 {
 	havePrev = false;
+	smoothValid = false;
 	for (int z = 0; z < RF_NUM_SPRITE_Z_LAYERS; ++z)
 		for (RF_SpriteDrawEntry *sde = rf_firstSpriteTableEntry[z]; sde; sde = sde->next)
 		{
@@ -393,14 +403,66 @@ static void RFI_DebugDumpFrame(void)
 	}
 }
 
+/* keen456-decomp #86: opt-in presentation-only camera smoothing. Returns the displayed camera
+ * for one axis pair from the raw interpolated target T. See docs/INTERP.md. */
+static void SmoothCamera(double tx, double ty, int *outX, int *outY)
+{
+	double T[2] = {tx, ty};
+	bool on = CK_FIX(CameraSmoothing) && mode != RFI_Mode_Grid;
+	double t = Now();
+	if (!on || smoothMode != mode)
+		smoothValid = false;
+	smoothMode = on ? mode : -1;
+	if (!on) { logDevX = logDevY = 0; *outX = (int)floor(tx + 0.5); *outY = (int)floor(ty + 0.5); return; }
+	double dt = t - smoothTime;
+	smoothTime = t;
+	if (smoothValid && (dt <= 0 || dt > 0.25 || fabs(T[0] - smoothT[0]) > SNAP_UNITS || fabs(T[1] - smoothT[1]) > SNAP_UNITS))
+		smoothValid = false;
+	if (!smoothValid)
+	{
+		for (int i = 0; i < 2; ++i) { smoothD[i] = T[i]; smoothV[i] = 0; smoothT[i] = T[i]; }
+		smoothValid = true;
+	}
+	else
+		for (int i = 0; i < 2; ++i)
+		{
+			double tv = (T[i] - smoothT[i]) / dt;
+			smoothT[i] = T[i];
+			double k = 1.0 - exp(-dt / SMOOTH_TAU);
+			smoothV[i] += (tv - smoothV[i]) * k;
+			smoothD[i] += smoothV[i] * dt;
+			double pull = dt / SMOOTH_PULL;
+			smoothD[i] += (T[i] - smoothD[i]) * (pull > 1.0 ? 1.0 : pull);
+			if (smoothD[i] - T[i] > SMOOTH_MAX_DEV) smoothD[i] = T[i] + SMOOTH_MAX_DEV;
+			if (T[i] - smoothD[i] > SMOOTH_MAX_DEV) smoothD[i] = T[i] - SMOOTH_MAX_DEV;
+		}
+	logDevX = (int)floor(smoothD[0] - T[0] + 0.5); logDevY = (int)floor(smoothD[1] - T[1] + 0.5);
+	*outX = (int)floor(smoothD[0] + 0.5); *outY = (int)floor(smoothD[1] + 0.5);
+}
+
 static void Compose(double alpha)
 {
 	int qx = (mode == RFI_Mode_Grid) ? 32 : (mode == RFI_Mode_Pixel) ? 16 : 16 / S;
 	int qy = (mode == RFI_Mode_Grid) ? 16 : qx;
 	if (mode == RFI_Mode_Grid) alpha = 1.0;
 
-	int camX = Quant(Lerp(prevCamX, rf_scrollXUnit, alpha), qx);
-	int camY = Quant(Lerp(prevCamY, rf_scrollYUnit, alpha), qy);
+	int camX, camY;
+	if (mode != RFI_Mode_Grid && CK_FIX(CameraSmoothing))
+	{
+		/* keen456-decomp #86: target T = unrounded Lerp; draw everything relative to the smoothed D */
+		double tx = rf_scrollXUnit, ty = rf_scrollYUnit;
+		if (abs(rf_scrollXUnit - prevCamX) <= SNAP_UNITS) tx = prevCamX + (double)(rf_scrollXUnit - prevCamX) * alpha;
+		if (abs(rf_scrollYUnit - prevCamY) <= SNAP_UNITS) ty = prevCamY + (double)(rf_scrollYUnit - prevCamY) * alpha;
+		SmoothCamera(tx, ty, &camX, &camY);
+		camX = Quant(camX, qx); camY = Quant(camY, qy);
+	}
+	else
+	{
+		smoothValid = false;
+		logDevX = logDevY = 0;
+		camX = Quant(Lerp(prevCamX, rf_scrollXUnit, alpha), qx);
+		camY = Quant(Lerp(prevCamY, rf_scrollYUnit, alpha), qy);
+	}
 	int originTX = FloorDiv(camX, 256) - 1, originTY = FloorDiv(camY, 256) - 1;
 	int offX = (camX - originTX * 256) * S / 16, offY = (camY - originTY * 256) * S / 16;
 
@@ -496,7 +558,7 @@ static void Present(void)
 			fprintf(logFile, "%ld,%ld,%.3f,%d,%d,%d,%d,", dispFrame, simFrame, logAlpha, logCamX, logKeenWorldX, logKeenX, logKeenY);
 			if (logPlat && ck_keenState.platform) fprintf(logFile, "%d,%d", logPlatX, logPlatY);
 			else fprintf(logFile, ",");
-			fprintf(logFile, ",%d,%d,%d\n", logCamY, rf_scrollXUnit, rf_scrollYUnit);
+			fprintf(logFile, ",%d,%d,%d,%d,%d\n", logCamY, rf_scrollXUnit, rf_scrollYUnit, logDevX, logDevY);
 		}
 		LogPresent(vnow);
 		if (dispFrame >= capSkip)

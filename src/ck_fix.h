@@ -49,6 +49,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	CK_FIX_ENTRY(StallChargeOnce, "stall-charge-once", true, false, true, "After a stall longer than 5 tics, charge the clipped time once instead of twice (keen456-decomp #84 F2)") \
 	CK_FIX_ENTRY(ClockContinuity, "clock-continuity", true, false, true, "Keep the game clock continuous across pauses, menus and dialogs (keen456-decomp #84 F1)") \
 	CK_FIX_ENTRY(TimeBasedFades, "time-based-fades", false, false, true, "Palette fades take the vanilla 70 Hz duration whatever the refresh rate (keen456-decomp #78)") \
+	CK_FIX_ENTRY(CameraSmoothing, "camera-smoothing", false, false, false, "Opt-in: velocity-smooth the displayed camera in pixel/subpixel interpolation (presentation only, keen456-decomp #86)") \
 	CK_FIX_ENTRY(Example, "example", false, false, true, "Example entry: logs one line at startup. Copy it to add a fix.")
 
 typedef enum CK_FixId
