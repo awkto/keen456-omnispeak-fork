@@ -117,7 +117,8 @@ static double lastPresent = -1, statSum, statMin = 1e9, statMax, statT0;
 static int statN;
 static double composeSum;
 static FILE *logFile;
-static int logCamX, logKeenX, logKeenWorldX;
+static int logCamX, logKeenX, logKeenWorldX, logKeenY, logPlatX, logPlatY;
+static bool logPlat;
 static double logAlpha;
 
 typedef struct { int key, from, to; } ScriptEv;
@@ -186,7 +187,7 @@ void RFI_Startup(RFI_Mode m)
 		logFile = fopen(e, "w");
 		if (logFile)
 		{
-			fprintf(logFile, "disp,sim,alpha,cam_x_qpx,keen_world_x_qpx,keen_screen_x_qpx\n");
+			fprintf(logFile, "disp,sim,alpha,cam_x_qpx,keen_world_x_qpx,keen_screen_x_qpx,keen_screen_y,plat_screen_x,plat_screen_y\n");
 			if (!logsAtexit) { atexit(RFI_CloseLogs); logsAtexit = true; }
 		}
 	}
@@ -403,6 +404,7 @@ static void Compose(double alpha)
 	int offX = (camX - originTX * 256) * S / 16, offY = (camY - originTY * 256) * S / 16;
 
 	logCamX = camX * S / 16; logAlpha = alpha;
+	logPlat = false;
 	BuildLayers(originTX, originTY);
 	BlitLayer(layerBack, offX, offY, false);
 	for (int z = 0; z < RF_NUM_SPRITE_Z_LAYERS; ++z)
@@ -425,7 +427,8 @@ static void Compose(double alpha)
 				else if (ste.shifts == 2) sh = (sh >= 2) ? 2 : 0;
 				ux = ((px & ~7) + sh * 2) << 4;
 			}
-			if (ck_keenObj && sde == ck_keenObj->sde) { logKeenX = (ux - camX) * S / 16; logKeenWorldX = ux * S / 16; }
+			if (ck_keenObj && sde == ck_keenObj->sde) { logKeenX = (ux - camX) * S / 16; logKeenWorldX = ux * S / 16; logKeenY = (uy - camY) * S / 16; }
+			if (ck_keenObj && ck_keenState.platform && sde == ck_keenState.platform->sde) { logPlat = true; logPlatX = (ux - camX) * S / 16; logPlatY = (uy - camY) * S / 16; }
 			BlitSprite(sde, (ux - camX) * S / 16, (uy - camY) * S / 16);
 		}
 	}
@@ -452,7 +455,11 @@ static void Present(void)
 	}
 	if (capFile)
 	{
-		if (logFile) fprintf(logFile, "%ld,%ld,%.3f,%d,%d,%d\n", dispFrame, simFrame, logAlpha, logCamX, logKeenWorldX, logKeenX);
+		if (logFile) {
+			fprintf(logFile, "%ld,%ld,%.3f,%d,%d,%d,%d,", dispFrame, simFrame, logAlpha, logCamX, logKeenWorldX, logKeenX, logKeenY);
+			if (logPlat && ck_keenState.platform) fprintf(logFile, "%d,%d\n", logPlatX, logPlatY);
+			else fprintf(logFile, ",\n");
+		}
 		LogPresent(vnow);
 		if (dispFrame >= capSkip)
 		{
