@@ -42,6 +42,15 @@ JOBS=${JOBS:-4}
 RUN_TIMEOUT=${RUN_TIMEOUT:-300}
 NICE="nice -n 19 ionice -c3"
 
+# Byte compare first; if that fails, compare with tests/dos-golden/tracecmp.py, which ignores
+# the wall-clock TimeCount and the presentation-only sprite field (docs in keen456-decomp
+# TRACE_FORMAT.md). Wall-clock noise is reported but does not fail the guard.
+same() { # a b ep -> 0 identical, 1 equal on compared fields, 2 differs
+	cmp -s "$1" "$2" && return 0
+	python3 "$ROOT/tests/dos-golden/tracecmp.py" cmp -e "$3" "$1" "$2" > /dev/null 2>&1 && return 1
+	return 2
+}
+
 for ep in $EPISODES; do
 	for f in AUDIO EGAGRAPH GAMEMAPS; do
 		if [ ! -f "$KEEN_DATA/keen$ep/$f.CK$ep" ]; then
@@ -110,14 +119,20 @@ for ep in $EPISODES; do
 		rundemo "$WORK/cur/bin" "$ep" "$demo" "$van" /PROFILE vanilla || { FAILS=$((FAILS + 1)); continue; }
 		rundemo "$WORK/cur/bin" "$ep" "$demo" "$enh" /PROFILE enhanced || { FAILS=$((FAILS + 1)); continue; }
 
-		if cmp -s "$van" "$ref"; then
+		same "$van" "$ref" "$ep"; r=$?
+		if [ $r = 0 ]; then
 			echo "ok:   $tag vanilla == $BASE ($(sha1sum < "$van" | cut -c1-12))"
+		elif [ $r = 1 ]; then
+			echo "ok:   $tag vanilla == $BASE on compared fields (wall-clock TimeCount differs)"
 		else
 			echo "FAIL: $tag vanilla differs from $BASE: $(cmp "$van" "$ref" 2>&1 | head -1)"
 			FAILS=$((FAILS + 1))
 		fi
-		if cmp -s "$enh" "$van"; then
+		same "$enh" "$van" "$ep"; r=$?
+		if [ $r = 0 ]; then
 			echo "ok:   $tag enhanced == vanilla"
+		elif [ $r = 1 ]; then
+			echo "ok:   $tag enhanced == vanilla on compared fields (wall-clock TimeCount differs)"
 		else
 			echo "FAIL: $tag enhanced differs from vanilla: $(cmp "$enh" "$van" 2>&1 | head -1)"
 			FAILS=$((FAILS + 1))
