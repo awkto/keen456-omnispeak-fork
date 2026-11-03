@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "ck_cross.h"
 #include "id_us.h"
+#include "ck_fix.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -158,27 +159,48 @@ void VL_SetPalette(uint8_t *palette)
 	VL_SetPaletteAndBorderColor(palette);
 }
 
-void VL_FadeToBlack(void)
+// keen456-decomp #78: one fade, stepping through vl_palette[] in the given
+// order. Vanilla delays 6 tics after each present, so a blocking vsync makes
+// every step longer than 6/70 s. With time-based-fades the delay is measured
+// against an absolute deadline, so the present time is absorbed into it.
+static void VL_FadeSteps(int first, int dir)
 {
-	for (int i = 3; i >= 0; i--)
+	const char *dbg = getenv("OMNI_DEBUG_FADES");
+	const char *dbgPresent = dbg ? getenv("OMNI_DEBUG_FADES_PRESENT_MS") : NULL;
+	bool timeBased = CK_FIX(TimeBasedFades);
+	uint64_t freq = SDL_GetPerformanceFrequency();
+	uint64_t start = SDL_GetPerformanceCounter();
+	for (int n = 0, i = first; n < 4; n++, i += dir)
 	{
 		vl_palette[i][16] = vl_border_color;
 		VL_SetPaletteAndBorderColor(vl_palette[i]);
 		VL_Present();
-		VL_DelayTics(6);
+		if (dbgPresent) // debug: simulate a blocking vsync under the dummy driver
+			SDL_Delay(atoi(dbgPresent));
+		if (timeBased)
+		{
+			uint64_t deadline = start + (uint64_t)(n + 1) * 6 * freq / 70;
+			uint64_t now = SDL_GetPerformanceCounter();
+			if (now < deadline)
+				SDL_Delay((uint32_t)((deadline - now) * 1000 / freq));
+		}
+		else
+			VL_DelayTics(6);
 	}
+	if (dbg)
+		fprintf(stderr, "fade: %s timeBased=%d %.1f ms\n", dir < 0 ? "to-black" : "from-black", timeBased,
+			(double)(SDL_GetPerformanceCounter() - start) * 1000.0 / freq);
+}
+
+void VL_FadeToBlack(void)
+{
+	VL_FadeSteps(3, -1);
 	vl_screenFaded = true;
 }
 
 void VL_FadeFromBlack(void)
 {
-	for (int i = 0; i < 4; i++)
-	{
-		vl_palette[i][16] = vl_border_color;
-		VL_SetPaletteAndBorderColor(vl_palette[i]);
-		VL_Present();
-		VL_DelayTics(6);
-	}
+	VL_FadeSteps(0, 1);
 	vl_screenFaded = false;
 }
 

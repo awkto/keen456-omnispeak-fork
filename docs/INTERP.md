@@ -141,6 +141,17 @@ nothing. To compare the two renderers frame by frame: run the same demo once wit
 `/NOINTERP` and once with `/INTERP grid`, both with `OMNI_DEBUG_FRAMES=<path>`,
 then compare the two files (same byte length, 64000 per frame).
 
+## Fades
+
+Vanilla fades wait 6 tics after presenting each of the 4 palette steps, so on a
+vsynced display every step also costs up to one refresh and the fade gets
+longer as the refresh rate drops. The `time-based-fades` fix (presentation
+only, off in vanilla) schedules each step against an absolute deadline of
+6/70 s per step from the start of the fade, so the fade lasts about 343 ms
+whatever the refresh rate (keen456-decomp #78). `OMNI_DEBUG_FADES=1` logs each
+fade's wall time to stderr; `OMNI_DEBUG_FADES_PRESENT_MS=<n>` adds an n ms
+sleep after each fade present to simulate a blocking vsync.
+
 ## Renderers
 
 The compositor produces a 1280x800 ARGB frame. Each backend only has to show it:
