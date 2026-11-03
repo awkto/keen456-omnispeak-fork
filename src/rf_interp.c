@@ -101,7 +101,6 @@ static int fastPresents;
 static bool noVsync;
 static FILE *capFile;
 static FILE *debugFrameFile; /* keen456-decomp #75: OMNI_DEBUG_FRAMES, interpolated */
-static long debugFrameSim = -1;
 static bool debugFrameWarned;
 static long capSkip, capFrames = -1, dispFrame, simFrame;
 static double frameStart = -1.0, vnow;
@@ -371,9 +370,8 @@ static void BlitSprite(RF_SpriteDrawEntry *sde, int ox, int oy)
  * present at a transition can shift the two runs by one frame. */
 static void RFI_DebugDumpFrame(void)
 {
-	if (!debugFrameFile || simFrame == debugFrameSim)
+	if (!debugFrameFile)
 		return;
-	debugFrameSim = simFrame;
 	if (mode != RFI_Mode_Grid)
 	{
 		if (!debugFrameWarned)
@@ -421,8 +419,6 @@ static void Compose(double alpha)
 			BlitSprite(sde, (ux - camX) * S / 16, (uy - camY) * S / 16);
 		}
 	}
-	/* keen456-decomp #75: out8 is now complete for this display frame. */
-	RFI_DebugDumpFrame();
 }
 
 static void LogPresent(double t)
@@ -534,7 +530,15 @@ void RFI_Frame(void)
 	if (frameStart < 0 || now - frameStart > rf_maxTics / 70.0)
 		frameStart = now;
 
-	for (;;)
+	/* keen456-decomp #75: OMNI_DEBUG_FRAMES: compose + dump exactly once per sim
+	 * frame (alpha forced to 1 in grid mode), independent of wall-clock, and skip
+	 * the realtime present loop so no sim frame can be missed. */
+	if (debugFrameFile)
+	{
+		Compose(1.0);
+		RFI_DebugDumpFrame();
+	}
+	for (; !debugFrameFile;)
 	{
 		double alpha = (Now() - frameStart) / dur;
 		if (alpha >= 1.0) break;
