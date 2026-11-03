@@ -415,6 +415,16 @@ static void Compose(double alpha)
 			int uy = Lerp(sde->prevUY, sde->curUY, alpha) + ste.originY;
 			/* world-locked snapping: sprites sit on the same grid as the tiles */
 			ux = Quant(ux, qx); uy = Quant(uy, qy);
+			if (mode == RFI_Mode_Grid)
+			{
+				/* Vanilla (RF_AddSpriteDraw) only has as many pre-shifted copies as the
+				 * sprite's 'shifts' field: 1 = always the unshifted copy, on the 8-px
+				 * byte boundary; 2 = shift 0 or 4 px; 4 = 0/2/4/6 px. Match that. */
+				int px = ux >> 4, sh = (px & 7) / 2;
+				if (vl_noPan || ste.shifts == 1) sh = 0;
+				else if (ste.shifts == 2) sh = (sh >= 2) ? 2 : 0;
+				ux = ((px & ~7) + sh * 2) << 4;
+			}
 			if (ck_keenObj && sde == ck_keenObj->sde) { logKeenX = (ux - camX) * S / 16; logKeenWorldX = ux * S / 16; }
 			BlitSprite(sde, (ux - camX) * S / 16, (uy - camY) * S / 16);
 		}
