@@ -585,7 +585,7 @@ int main(int argc, char *argv[])
 	#ifdef WITH_KEEN6_COPY_PROTECTION_OVERRIDE
 		bool overrideCopyProtection = true;
 	#else
-		bool overrideCopyProtection = CFG_GetConfigBool("ck6_noCreatureQuestion", false);
+		bool overrideCopyProtection = CFG_GetConfigBool("ck6_noCreatureQuestion", true) /* keen456: skip by default */;
 	#endif
 	int swapInterval = CFG_GetConfigInt("swapInterval", 1);
 #ifdef WITH_RF_INTERP
