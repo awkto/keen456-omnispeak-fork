@@ -557,9 +557,11 @@ void SD_SDL_Startup(void)
 		// Under wine, small buffer sizes cause a lot of crackling, so we double the
 		// buffer size. This will result in a tiny amount (~10ms) of extra lag on windows,
 		// but it's a price I'm prepared to pay to not have my ears explode.
-#if defined(_WIN32) || defined(__EMSCRIPTEN__)
-		/* browser: the callback runs on the main thread between frames, so it
-		 * needs a buffer that covers a slow frame or two */
+#if defined(__EMSCRIPTEN__)
+		/* browser: the callback runs on the main thread between frames, so the
+		 * buffer must cover a slow frame or two (2048 @ 49716 Hz = 41 ms) */
+		SD_SDL_AudioSpec.samples = CFG_GetConfigInt("audioBufferSamples", 2048);
+#elif defined(_WIN32)
 		SD_SDL_AudioSpec.samples = CFG_GetConfigInt("audioBufferSamples", 1024);
 #else
 		SD_SDL_AudioSpec.samples = CFG_GetConfigInt("audioBufferSamples", 512);
