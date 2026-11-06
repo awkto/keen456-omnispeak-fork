@@ -706,7 +706,23 @@ void RFI_Frame(void)
 	{
 		/* demos: use the vanilla clock (wait for the tick, TimeCount one frame
 		 * ahead) so the playloop dump, which records TimeCount, is unchanged */
+#ifdef __EMSCRIPTEN__
+		/* Browser: the presents above already paced this frame to rf_demoTics
+		 * (frameStart+dur). RFL_CalcTics would then wait a further full demo
+		 * frame since its previous return (the clock phase is reset every
+		 * frame), stretching each sim frame to ~46 ms and dropping presents.
+		 * Do the same clock bookkeeping, same values, without the wait. */
+		{
+			uint32_t newTime = (uint32_t)SD_GetLastTimeCount();
+			if (newTime > SD_GetTimeCount())
+				SD_SetTimeCount(newTime);
+			SD_SetLastTimeCount(newTime + rf_demoTics);
+			SD_SetTimeCount(newTime + rf_demoTics * 2);
+			SD_SetSpriteSync(rf_demoTics);
+		}
+#else
 		RFL_CalcTics();
+#endif
 	}
 	else
 	{
