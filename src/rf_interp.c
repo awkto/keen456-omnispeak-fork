@@ -129,6 +129,7 @@ static int logCamY;
 static int logCamX, logKeenX, logKeenWorldX, logKeenY, logPlatX, logPlatY;
 static bool logPlat;
 static int logDevX, logDevY;
+static int logSBX, logSBY; /* scorebox screen position (quarter pixels); -99999 if not drawn */
 static double logAlpha;
 
 typedef struct { int key, from, to; } ScriptEv;
@@ -198,7 +199,7 @@ void RFI_Startup(RFI_Mode m)
 		logFile = fopen(e, "w");
 		if (logFile)
 		{
-			fprintf(logFile, "disp,sim,alpha,cam_x_qpx,keen_world_x_qpx,keen_screen_x_qpx,keen_screen_y,plat_screen_x,plat_screen_y,cam_y_qpx,sim_cam_x_u,sim_cam_y_u,cam_dev_x_u,cam_dev_y_u\n");
+			fprintf(logFile, "disp,sim,alpha,cam_x_qpx,keen_world_x_qpx,keen_screen_x_qpx,keen_screen_y,plat_screen_x,plat_screen_y,cam_y_qpx,sim_cam_x_u,sim_cam_y_u,cam_dev_x_u,cam_dev_y_u,scorebox_x_qpx,scorebox_y_qpx\n");
 			if (!logsAtexit) { atexit(RFI_CloseLogs); logsAtexit = true; }
 		}
 	}
@@ -489,6 +490,7 @@ static void Compose(double alpha)
 
 	logCamX = camX * S / 16; logCamY = camY * S / 16; logAlpha = alpha;
 	logPlat = false;
+	logSBX = logSBY = -99999;
 
 	/* keen456-decomp #85: pixel/subpixel only. A riding Keen is drawn at the platform's quantised
 	 * position plus his own interpolated+quantised offset from it, so independent rounding of the two
@@ -537,6 +539,14 @@ static void Compose(double alpha)
 				int ry = Lerp(sde->prevUY - platSde->prevUY, sde->curUY - platSde->curUY, alpha) + ste.originY - platOY;
 				ux = platDX + Quant(rx, qx); uy = platDY + Quant(ry, qy);
 			}
+			if (mode != RFI_Mode_Grid && ck_scoreBoxObj && sde == ck_scoreBoxObj->sde)
+			{
+				/* keen456-decomp #77: the scorebox/demo sign is a HUD: pinned to the screen, so draw it at
+				 * the displayed camera plus its fixed screen offset. Without this it follows the plain lerp
+				 * while the camera follows the smoothed D (camera-smoothing), and shimmers. */
+				ux = camX + Quant(sde->curUX - rf_scrollXUnit + ste.originX, qx);
+				uy = camY + Quant(sde->curUY - rf_scrollYUnit + ste.originY, qy);
+			}
 			if (mode == RFI_Mode_Grid)
 			{
 				/* Vanilla (RF_AddSpriteDraw) only has as many pre-shifted copies as the
@@ -549,6 +559,7 @@ static void Compose(double alpha)
 			}
 			if (ck_keenObj && sde == ck_keenObj->sde) { logKeenX = (ux - camX) * S / 16; logKeenWorldX = ux * S / 16; logKeenY = (uy - camY) * S / 16; }
 			if (ck_keenObj && ck_keenState.platform && sde == ck_keenState.platform->sde) { logPlat = true; logPlatX = (ux - camX) * S / 16; logPlatY = (uy - camY) * S / 16; }
+			if (ck_scoreBoxObj && sde == ck_scoreBoxObj->sde) { logSBX = (ux - camX) * S / 16; logSBY = (uy - camY) * S / 16; }
 			BlitSprite(sde, (ux - camX) * S / 16, (uy - camY) * S / 16);
 		}
 	}
@@ -579,7 +590,7 @@ static void Present(void)
 			fprintf(logFile, "%ld,%ld,%.3f,%d,%d,%d,%d,", dispFrame, simFrame, logAlpha, logCamX, logKeenWorldX, logKeenX, logKeenY);
 			if (logPlat && ck_keenState.platform) fprintf(logFile, "%d,%d", logPlatX, logPlatY);
 			else fprintf(logFile, ",");
-			fprintf(logFile, ",%d,%d,%d,%d,%d\n", logCamY, rf_scrollXUnit, rf_scrollYUnit, logDevX, logDevY);
+			fprintf(logFile, ",%d,%d,%d,%d,%d,%d,%d\n", logCamY, rf_scrollXUnit, rf_scrollYUnit, logDevX, logDevY, logSBX, logSBY);
 		}
 		LogPresent(vnow);
 		if (dispFrame >= capSkip)

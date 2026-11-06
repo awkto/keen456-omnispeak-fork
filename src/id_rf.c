@@ -1517,11 +1517,16 @@ void RF_Refresh()
 	VL_SetScrollCoords(RF_UnitToPixel(rf_scrollXUnit & 0xef), RF_UnitToPixel(rf_scrollYUnit & 0xff));
 #ifdef WITH_RF_INTERP
 	// Display-rate interpolation replaces VL_SwapOnNextPresent + VL_Present + RFL_CalcTics.
-	if (RFI_Enabled())
+	// keen456-decomp #77: a draw hook (the Enter-key status window) paints straight onto the
+	// screen surface, which the interpolating compositor never reads (it builds frames from the
+	// map). While a hook is active, present the vanilla frame instead; RFI_Frame resyncs after.
+	if (RFI_Enabled() && !rf_drawFunc)
 	{
 		RFI_Frame();
 		return;
 	}
+	if (RFI_Enabled())
+		RFI_Reset();
 #endif
 	VL_SwapOnNextPresent();
 	VL_Present();
