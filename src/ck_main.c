@@ -87,6 +87,21 @@ void CK_MeasureMultiline(const char *str, uint16_t *w, uint16_t *h)
 	}
 }
 
+#ifdef __EMSCRIPTEN__
+/* Browser: the page is closed instead of the game quitting, so CK_ShutdownID
+ * (the only place CONFIG.EXT and OMNISPK.CFG are written) never runs. The page
+ * sets Module.saveReq; CK_Cross_Yield polls it and calls this from the game's
+ * own (asyncify) context, never from a JS callback while the game is suspended. */
+void Web_SaveConfig(void)
+{
+	extern bool cfg_started;
+	if (!cfg_started)
+		return;
+	US_Shutdown(); /* writes CONFIG.EXT if US is up */
+	CFG_SaveConfig("OMNISPK.CFG");
+}
+#endif
+
 /*
  * Shutdown all of the 'ID Engine' components
  */

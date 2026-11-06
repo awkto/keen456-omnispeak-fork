@@ -282,6 +282,10 @@ void CFG_SaveConfig(const char *filename)
 	// 3. We loop over all variables again, and append any unsaved ones
 	// to the file.
 
+	// The unmodified range is static state: reset it so saving more than once
+	// (the browser build saves periodically) does not start from the last file's offsets.
+	cfg_unmodifiedRangeStart = cfg_unmodifiedRangeEnd = 0;
+
 	// Mark all variables unsaved.
 	size_t currentVarIndex = 0;
 	CFG_Variable *currentVar;

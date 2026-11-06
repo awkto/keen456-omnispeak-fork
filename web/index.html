@@ -7,7 +7,12 @@ html,body{margin:0;height:100%;background:#000;color:#ddd;font-family:sans-serif
 #launcher button{font-size:1.1em;margin:.2em;padding:.4em 1em}
 #stage{display:none;width:100vw;height:100vh;align-items:center;justify-content:center}
 canvas{width:min(100vw,calc(100vh*4/3));height:min(100vh,calc(100vw*3/4));image-rendering:pixelated;outline:none;background:#000}
+#stage:fullscreen{background:#000}
 #fs{position:fixed;top:4px;right:4px;opacity:.5;z-index:2}
+#loading{display:none;position:fixed;inset:0;z-index:3;background:#000;align-items:center;justify-content:center;flex-direction:column;font-size:1.1em}
+#bar{width:min(60vw,320px);height:10px;border:1px solid #888;margin-top:.8em}
+#bar i{display:block;height:100%;width:0;background:#4a4}
+#help{font-size:.85em;opacity:.8;margin-top:1.2em;line-height:1.6}
 #status{position:fixed;left:4px;bottom:4px;font-size:12px;opacity:.7}
 </style></head><body>
 <div id="launcher">
@@ -15,17 +20,32 @@ canvas{width:min(100vw,calc(100vh*4/3));height:min(100vh,calc(100vw*3/4));image-
 <div>Smoothing: <select id="smooth"><option value="off">Off</option><option value="grid">Grid</option><option value="pixel">Pixel</option><option value="subpixel" selected>Subpixel</option></select>
 <label><input type="checkbox" id="cam" checked> Camera smoothing</label></div>
 <div id="btns"></div>
-<p style="font-size:.8em;opacity:.7">Click a button to start (this also enables audio). Saves persist in this browser.</p>
+<p style="font-size:.8em;opacity:.7">Click a button to start (this also enables audio). Saves and options persist in this browser.</p>
+<div id="help"><b>Controls:</b> arrows move, Ctrl jump, Alt pogo, Space fire, Enter status, Esc menu, F11 or the Fullscreen button for full screen.<br>
+Ctrl+W/T/N and Alt+Tab/Alt+F4 are reserved by the browser or OS and cannot be used in-game.</div>
 </div>
+<div id="loading"><div id="ltext">Loading...</div><div id="bar"><i></i></div></div>
 <div id="stage"><canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas></div>
 <button id="fs" style="display:none">Fullscreen</button><div id="status"></div>
 <script>
 const EPISODES = {4:"Keen 4", 5:"Keen 5", 6:"Keen 6"};
 const avail = (window.KEEN_EPISODES || [4,5,6]);
-for (const e of avail){const b=document.createElement('button');b.textContent=EPISODES[e];b.onclick=()=>start(e);btns.appendChild(b);}
-fs.onclick=()=>canvas.requestFullscreen();
+for (const e of avail){const b=document.createElement('button');b.textContent=EPISODES[e];b.dataset.ep=e;b.onclick=()=>start(e);btns.appendChild(b);}
+const LS=window.localStorage||{getItem(){},setItem(){}};
+function ls(k,v){try{if(v===undefined)return LS.getItem('keen.'+k);LS.setItem('keen.'+k,v);}catch(e){}}
+{const m=ls('smooth'),c=ls('cam'),ep=ls('ep');
+ if(m&&[...smooth.options].some(o=>o.value===m))smooth.value=m;
+ if(c!==null&&c!==undefined)cam.checked=c==='1';
+ if(ep)for(const b of btns.children)if(b.dataset.ep===ep)b.style.outline='2px solid #4a4';}
+smooth.onchange=()=>ls('smooth',smooth.value); cam.onchange=()=>ls('cam',cam.checked?'1':'0');
+// fullscreen the stage (not the canvas) so the 4:3 CSS letterboxing keeps applying
+fs.onclick=()=>{(document.fullscreenElement?document.exitFullscreen():stage.requestFullscreen()).then?.(()=>canvas.focus());canvas.focus();};
+document.addEventListener('fullscreenchange',()=>canvas.focus());
+function setLoading(on,text,frac){loading.style.display=on?'flex':'none';if(text)ltext.textContent=text;if(frac!==undefined)bar.firstChild.style.width=(frac*100)+'%';}
 function loadScript(src){return new Promise((ok,err)=>{const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=()=>err(new Error(src));document.body.appendChild(s);});}
 async function start(ep){
+  ls('smooth',smooth.value); ls('cam',cam.checked?'1':'0'); ls('ep',String(ep));
+  setLoading(true,'Loading Keen '+ep+'...',0);
   launcher.style.display='none'; stage.style.display='flex'; fs.style.display='';
   const mode=smooth.value, args=['/EPISODE',String(ep),'/USERPATH','/save'];
   if(mode==='off') args.push('/NOINTERP'); else args.push('/PROFILE','enhanced','/INTERP',mode);
@@ -33,7 +53,11 @@ async function start(ep){
   const M = window.Module = {
     arguments: args, canvas: canvas, preRun: [],
     print: t=>console.log(t), printErr: t=>{console.warn(t); if(t.startsWith('[interp]')) status.textContent=t.replace(/^\[interp\] Omnispeak interpolation \[F12\] /,'');},
-    setStatus: t=>{status.textContent=t;},
+    setStatus: t=>{status.textContent=t;
+      const m=/\((\d+)\/(\d+)\)/.exec(t||'');
+      if(m)setLoading(true,'Downloading... '+Math.round(100*m[1]/m[2])+'%',m[1]/m[2]);
+      else if(t)setLoading(true,t);
+      else{setLoading(false);canvas.focus();}},
     onAbort: w=>{status.textContent='ABORT: '+w;},
     locateFile: p=>p,
   };
@@ -45,12 +69,24 @@ async function start(ep){
     M.addRunDependency('idbfs');
     const FS=M.FS||window.FS;
     FS.mkdir('/save'); FS.mount(M.IDBFS||FS.filesystems.IDBFS,{},'/save');
+    let busy=false,again=false;
+    const sync=()=>{ if(busy){again=true;return;} busy=true;
+      FS.syncfs(false,()=>{busy=false;if(again){again=false;sync();}}); };
     FS.syncfs(true,err=>{ M.removeRunDependency('idbfs');
-      setInterval(()=>FS.syncfs(false,()=>{}),5000); });
+      setInterval(sync,3000);
+      // options/key config are only written at game quit otherwise: ask the game to write them (it polls Module.saveReq)
+      setInterval(()=>{M.saveReq=1;},3000);
+      // flush on tab hide / close too, so a save right before leaving is not lost
+      document.addEventListener('visibilitychange',()=>{if(document.hidden)sync();});
+      window.addEventListener('pagehide',sync); });
   });
   await loadScript('k'+ep+'.js');       // registers the data package into preRun
-  canvas.addEventListener('mousedown',()=>canvas.focus());
-  window.addEventListener('keydown',e=>{ if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault(); },{capture:true});
+  stage.addEventListener('mousedown',()=>setTimeout(()=>canvas.focus(),0));
+  window.addEventListener('focus',()=>canvas.focus());
+  // keep the browser from acting on keys the game uses (scrolling, menu bar on Alt, F1 help, F3 find, ...)
+  const KEYS=['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' ','Control','Alt','Tab','Backspace','F1','F2','F3','F4','F5','F6','F7','F8','F9','F10'];
+  const stop=e=>{ if(KEYS.includes(e.key)||(e.altKey&&!e.ctrlKey&&e.key.length===1)) e.preventDefault(); };
+  window.addEventListener('keydown',stop,{capture:true}); window.addEventListener('keyup',stop,{capture:true});
   await loadScript('omnispeak.js');
   canvas.focus();
 }

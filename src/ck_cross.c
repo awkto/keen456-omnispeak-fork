@@ -135,8 +135,24 @@ size_t CK_Cross_strscpy(char* dst, const char* src, size_t bufsiz)
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+extern void Web_SaveConfig(void);
+static void CK_Cross_WebPoll(void)
+{
+	static double lastChk = 0;
+	double now = emscripten_get_now();
+	if (now - lastChk < 500.0)
+		return;
+	lastChk = now;
+	if (EM_ASM_INT({ return Module.saveReq ? 1 : 0; }))
+	{
+		EM_ASM({ Module.saveReq = 0; });
+		Web_SaveConfig();
+	}
+}
+
 void CK_Cross_YieldNow(void)
 {
+	CK_Cross_WebPoll();
 	emscripten_sleep(0);
 }
 
@@ -146,6 +162,7 @@ void CK_Cross_Yield(void)
 	double now = emscripten_get_now();
 	if (now - last >= 4.0)
 	{
+		CK_Cross_WebPoll();
 		emscripten_sleep(0);
 		last = emscripten_get_now();
 	}
