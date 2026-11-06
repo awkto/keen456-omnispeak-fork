@@ -91,7 +91,15 @@ uint32_t SD_GetTimeCount()
 
 void SD_SetTimeCount(uint32_t newval)
 {
-	sd_emsBaseMs = emscripten_get_now();
+	/* Keep the phase within the current tick, as the PIT would: only the count
+	 * changes. (Restarting the phase lost up to a tick on every set, which made
+	 * demos, whose clock is set every frame, run slow.) */
+	double now = emscripten_get_now();
+	if (sd_emsBaseMs < 0)
+		sd_emsBaseMs = now;
+	double ticks = (now - sd_emsBaseMs) * SD_EMS_TICK_HZ / 1000.0;
+	double frac = ticks - (double)(uint64_t)ticks;
+	sd_emsBaseMs = now - frac * 1000.0 / SD_EMS_TICK_HZ;
 	sd_emsBaseCount = newval;
 	sd_timeCount = newval;
 }

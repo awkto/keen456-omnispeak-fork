@@ -39,7 +39,8 @@ async function start(ep){
   };
   const q=new URLSearchParams(location.search);
   M.preRun.push(()=>{
-    if(q.has('stats')) (M.ENV||ENV).OMNI_DEBUG_INTERP_STATS='1';
+    const E=(M.ENV||ENV); if(q.has('stats')) E.OMNI_DEBUG_INTERP_STATS='1';
+    for(const [k,v] of q) if(k.startsWith('env.')) E[k.slice(4)]=v;   // debug: ?env.NAME=value
     // persistent saves/config in IndexedDB
     M.addRunDependency('idbfs');
     const FS=M.FS||window.FS;

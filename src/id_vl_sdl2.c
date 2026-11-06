@@ -499,35 +499,27 @@ void VL_PresentARGB(const uint32_t *argb, int w, int h, const char *title)
 	SDL_Rect renderRect = {(Sint16)vl_renderRgn_x, (Sint16)vl_renderRgn_y, vl_renderRgn_w, vl_renderRgn_h};
 	SDL_Rect fullRect = {(Sint16)vl_fullRgn_x, (Sint16)vl_fullRgn_y, vl_fullRgn_w, vl_fullRgn_h};
 	SDL_UpdateTexture(tex, 0, argb, w * 4);
-	// Same geometry as VL_SDL2_Present: renderRect is in the integer-scaled
-	// space, so without integer scaling it is drawn into vl_sdl2_scaledTarget
-	// and that is stretched to fullRect (drawing it straight into the fullRect
-	// viewport squashed or cropped the picture whenever the window was not at
-	// an integer scale).
+	// renderRect is in the integer-scaled space (vl_integerWidth x vl_integerHeight),
+	// which VL_SDL2_Present renders into vl_sdl2_scaledTarget and stretches to
+	// fullRect. The interpolated frame is already 4x, so map renderRect straight
+	// into fullRect instead: same picture, no render-target round trip per frame
+	// (that, plus glCheckFramebufferStatus, was a large share of a WebGL frame).
+	int iw = vl_integerWidth > 0 ? vl_integerWidth : vl_fullRgn_w;
+	int ih = vl_integerHeight > 0 ? vl_integerHeight : vl_fullRgn_h;
+	SDL_Rect dst = {
+		vl_fullRgn_x + (int)((int64_t)vl_renderRgn_x * vl_fullRgn_w / iw),
+		vl_fullRgn_y + (int)((int64_t)vl_renderRgn_y * vl_fullRgn_h / ih),
+		(int)((int64_t)vl_renderRgn_w * vl_fullRgn_w / iw),
+		(int)((int64_t)vl_renderRgn_h * vl_fullRgn_h / ih)};
+	(void)renderRect;
 	const Uint8 *bc = VL_EGARGBColorTable[vl_emuegavgaadapter.bordercolor];
-	if (vl_sdl2_scaledTarget)
-	{
-		SDL_SetRenderTarget(vl_sdl2_renderer, vl_sdl2_scaledTarget);
-		SDL_SetRenderDrawColor(vl_sdl2_renderer, bc[0], bc[1], bc[2], 255);
-		SDL_RenderClear(vl_sdl2_renderer);
-		SDL_RenderCopy(vl_sdl2_renderer, tex, 0, &renderRect);
-		SDL_SetRenderTarget(vl_sdl2_renderer, 0);
-		SDL_RenderSetViewport(vl_sdl2_renderer, 0);
-		SDL_SetRenderDrawColor(vl_sdl2_renderer, 0, 0, 0, 255);
-		SDL_RenderClear(vl_sdl2_renderer);
-		SDL_RenderCopy(vl_sdl2_renderer, vl_sdl2_scaledTarget, 0, &fullRect);
-	}
-	else
-	{
-		SDL_SetRenderTarget(vl_sdl2_renderer, 0);
-		SDL_RenderSetViewport(vl_sdl2_renderer, 0);
-		SDL_SetRenderDrawColor(vl_sdl2_renderer, 0, 0, 0, 255);
-		SDL_RenderClear(vl_sdl2_renderer);
-		SDL_RenderSetViewport(vl_sdl2_renderer, &fullRect);
-		SDL_SetRenderDrawColor(vl_sdl2_renderer, bc[0], bc[1], bc[2], 255);
-		SDL_RenderFillRect(vl_sdl2_renderer, 0);
-		SDL_RenderCopy(vl_sdl2_renderer, tex, 0, &renderRect);
-	}
+	SDL_SetRenderTarget(vl_sdl2_renderer, 0);
+	SDL_RenderSetViewport(vl_sdl2_renderer, 0);
+	SDL_SetRenderDrawColor(vl_sdl2_renderer, 0, 0, 0, 255);
+	SDL_RenderClear(vl_sdl2_renderer);
+	SDL_SetRenderDrawColor(vl_sdl2_renderer, bc[0], bc[1], bc[2], 255);
+	SDL_RenderFillRect(vl_sdl2_renderer, &fullRect);
+	SDL_RenderCopy(vl_sdl2_renderer, tex, 0, &dst);
 	SDL_RenderPresent(vl_sdl2_renderer);
 #ifdef __EMSCRIPTEN__
 	VL_WaitRAF();
