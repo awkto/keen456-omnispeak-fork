@@ -75,13 +75,29 @@ static volatile uint16_t sd_SpriteSync = 0;
 static int16_t sd_scaledPITTimerDivisor = 1;
 
 #ifdef __EMSCRIPTEN__
-void SD_SDL_PumpTimer(void);
-#endif
+#include <emscripten.h>
+/* Browser: TimeCount runs off performance.now() at the PIT-derived 70.07 Hz
+ * instead of the audio callback, which only runs in ~20 ms bursts. */
+#define SD_EMS_TICK_HZ (1193182.0 / 17028.0)
+static double sd_emsBaseMs = -1;
+static uint32_t sd_emsBaseCount;
 uint32_t SD_GetTimeCount()
 {
-#ifdef __EMSCRIPTEN__
-	SD_SDL_PumpTimer();
-#endif
+	double now = emscripten_get_now();
+	if (sd_emsBaseMs < 0)
+		sd_emsBaseMs = now;
+	return sd_emsBaseCount + (uint32_t)((now - sd_emsBaseMs) * SD_EMS_TICK_HZ / 1000.0);
+}
+
+void SD_SetTimeCount(uint32_t newval)
+{
+	sd_emsBaseMs = emscripten_get_now();
+	sd_emsBaseCount = newval;
+	sd_timeCount = newval;
+}
+#else
+uint32_t SD_GetTimeCount()
+{
 	return sd_timeCount;
 }
 
@@ -90,6 +106,7 @@ void SD_SetTimeCount(uint32_t newval)
 	SD_GetTimeCount(); // Refresh SD_LastPITTickTime to be in sync with SDL_GetTicks()
 	sd_timeCount = newval;
 }
+#endif
 
 int32_t SD_GetLastTimeCount()
 {

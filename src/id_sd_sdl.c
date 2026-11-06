@@ -500,11 +500,10 @@ void SD_SDL_Startup(void)
 	}
 
 #ifdef __EMSCRIPTEN__
-	/* No threads in the browser. The audio callback runs in ~20 ms chunks, which
-	 * would deliver PIT ticks in bursts, so use the timer fallback (the desktop
-	 * default) without its thread: SD_SDL_PumpTimer() catches the PIT up from
-	 * performance.now() whenever TimeCount is read or a tick is awaited. */
-	SD_SDL_useTimerFallback = true;
+	/* Browser: the audio callback runs the PIT service, so music and sound
+	 * effects are sample-accurate. The game clock (TimeCount) does not come
+	 * from it (callbacks arrive in bursts): see SD_GetTimeCount in id_sd.c. */
+	SD_SDL_useTimerFallback = false;
 #else
 	SD_SDL_useTimerFallback = !CFG_GetConfigBool("sd_sdl_audioSync", false);
 #endif
@@ -558,7 +557,9 @@ void SD_SDL_Startup(void)
 		// Under wine, small buffer sizes cause a lot of crackling, so we double the
 		// buffer size. This will result in a tiny amount (~10ms) of extra lag on windows,
 		// but it's a price I'm prepared to pay to not have my ears explode.
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__EMSCRIPTEN__)
+		/* browser: the callback runs on the main thread between frames, so it
+		 * needs a buffer that covers a slow frame or two */
 		SD_SDL_AudioSpec.samples = CFG_GetConfigInt("audioBufferSamples", 1024);
 #else
 		SD_SDL_AudioSpec.samples = CFG_GetConfigInt("audioBufferSamples", 512);
@@ -601,7 +602,7 @@ void SD_SDL_Startup(void)
 #endif
 		SD_SDL_nextTickAt = currPitTicks;
 #if defined(__EMSCRIPTEN__)
-		/* no thread: see SD_SDL_PumpTimer */
+		/* unused in the browser (callback-driven PIT) */
 #elif SDL_VERSION_ATLEAST(2, 0, 0)
 		SD_SDL_t0Thread = SDL_CreateThread(SD_SDL_t0InterruptThread, "ID_SD: t0 interrupt thread.", NULL);
 #else
@@ -647,30 +648,11 @@ void SD_SDL_Unlock()
 	SD_SDL_IsLocked = false;
 }
 
-#ifdef __EMSCRIPTEN__
-/* Single-threaded stand-in for SD_SDL_t0InterruptThread: run every PIT tick that
- * is due by now. The audio callback runs on the same thread between yields, so no
- * locking is needed. After a long stall (hidden tab) resync instead of replaying it. */
-void SD_SDL_PumpTimer(void)
-{
-	if (!SD_SDL_useTimerFallback)
-		return;
-	uint64_t currPitTicks = (uint64_t)(SDL_GetPerformanceCounter()) * PC_PIT_RATE / SDL_GetPerformanceFrequency();
-	if (currPitTicks > SD_SDL_nextTickAt + PC_PIT_RATE / 4)
-		SD_SDL_nextTickAt = currPitTicks;
-	while (currPitTicks >= SD_SDL_nextTickAt)
-	{
-		SDL_t0Service();
-		SD_SDL_nextTickAt += SD_SDL_timerDivisor;
-	}
-}
-#endif
 
 void SD_SDL_WaitTick()
 {
 #ifdef __EMSCRIPTEN__
-	CK_Cross_YieldNow();
-	SD_SDL_PumpTimer();
+	CK_Cross_YieldNow(); /* the clock is wall-time based; just let the browser run */
 	return;
 #endif
 	SDL_mutex *mtx = SDL_CreateMutex();

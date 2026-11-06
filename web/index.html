@@ -32,12 +32,14 @@ async function start(ep){
   if(cam.checked) args.push('/FIX','camera-smoothing');
   const M = window.Module = {
     arguments: args, canvas: canvas, preRun: [],
-    print: t=>console.log(t), printErr: t=>console.warn(t),
+    print: t=>console.log(t), printErr: t=>{console.warn(t); if(t.startsWith('[interp]')) status.textContent=t.replace(/^\[interp\] Omnispeak interpolation \[F12\] /,'');},
     setStatus: t=>{status.textContent=t;},
     onAbort: w=>{status.textContent='ABORT: '+w;},
     locateFile: p=>p,
   };
+  const q=new URLSearchParams(location.search);
   M.preRun.push(()=>{
+    if(q.has('stats')) (M.ENV||ENV).OMNI_DEBUG_INTERP_STATS='1';
     // persistent saves/config in IndexedDB
     M.addRunDependency('idbfs');
     const FS=M.FS||window.FS;
