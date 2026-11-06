@@ -500,8 +500,11 @@ void SD_SDL_Startup(void)
 	}
 
 #ifdef __EMSCRIPTEN__
-	/* No threads in the browser: the audio callback drives the PIT ticks. */
-	SD_SDL_useTimerFallback = false;
+	/* No threads in the browser. The audio callback runs in ~20 ms chunks, which
+	 * would deliver PIT ticks in bursts, so use the timer fallback (the desktop
+	 * default) without its thread: SD_SDL_PumpTimer() catches the PIT up from
+	 * performance.now() whenever TimeCount is read or a tick is awaited. */
+	SD_SDL_useTimerFallback = true;
 #else
 	SD_SDL_useTimerFallback = !CFG_GetConfigBool("sd_sdl_audioSync", false);
 #endif
@@ -597,7 +600,9 @@ void SD_SDL_Startup(void)
 		CK_Cross_LogMessage(CK_LOG_MSG_WARNING, "Using SDL sound timer fallback with SDL 1.2: precision issues may make the game run at the wrong speed.\n");
 #endif
 		SD_SDL_nextTickAt = currPitTicks;
-#if SDL_VERSION_ATLEAST(2, 0, 0)
+#if defined(__EMSCRIPTEN__)
+		/* no thread: see SD_SDL_PumpTimer */
+#elif SDL_VERSION_ATLEAST(2, 0, 0)
 		SD_SDL_t0Thread = SDL_CreateThread(SD_SDL_t0InterruptThread, "ID_SD: t0 interrupt thread.", NULL);
 #else
 		SD_SDL_t0Thread = SDL_CreateThread(SD_SDL_t0InterruptThread, NULL);
@@ -616,7 +621,9 @@ void SD_SDL_Shutdown(void)
 	if (SD_SDL_useTimerFallback)
 	{
 		SD_SDL_useTimerFallback = false;
+#ifndef __EMSCRIPTEN__
 		SDL_WaitThread(SD_SDL_t0Thread, NULL);
+#endif
 	}
 }
 
@@ -640,10 +647,30 @@ void SD_SDL_Unlock()
 	SD_SDL_IsLocked = false;
 }
 
+#ifdef __EMSCRIPTEN__
+/* Single-threaded stand-in for SD_SDL_t0InterruptThread: run every PIT tick that
+ * is due by now. The audio callback runs on the same thread between yields, so no
+ * locking is needed. After a long stall (hidden tab) resync instead of replaying it. */
+void SD_SDL_PumpTimer(void)
+{
+	if (!SD_SDL_useTimerFallback)
+		return;
+	uint64_t currPitTicks = (uint64_t)(SDL_GetPerformanceCounter()) * PC_PIT_RATE / SDL_GetPerformanceFrequency();
+	if (currPitTicks > SD_SDL_nextTickAt + PC_PIT_RATE / 4)
+		SD_SDL_nextTickAt = currPitTicks;
+	while (currPitTicks >= SD_SDL_nextTickAt)
+	{
+		SDL_t0Service();
+		SD_SDL_nextTickAt += SD_SDL_timerDivisor;
+	}
+}
+#endif
+
 void SD_SDL_WaitTick()
 {
 #ifdef __EMSCRIPTEN__
-	CK_Cross_YieldNow(); /* single-threaded: ticks arrive via the audio callback between yields */
+	CK_Cross_YieldNow();
+	SD_SDL_PumpTimer();
 	return;
 #endif
 	SDL_mutex *mtx = SDL_CreateMutex();

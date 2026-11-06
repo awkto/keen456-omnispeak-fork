@@ -74,8 +74,14 @@ static volatile uint16_t sd_SpriteSync = 0;
 // NOT initialized to 0 since this can lead to division by zero on startup.
 static int16_t sd_scaledPITTimerDivisor = 1;
 
+#ifdef __EMSCRIPTEN__
+void SD_SDL_PumpTimer(void);
+#endif
 uint32_t SD_GetTimeCount()
 {
+#ifdef __EMSCRIPTEN__
+	SD_SDL_PumpTimer();
+#endif
 	return sd_timeCount;
 }
 
