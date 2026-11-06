@@ -28,6 +28,7 @@ In demos (playback, recording, `/DUMPFILE`) `RFL_CalcTics` still runs, so
 | Case | Rule | Where (file:line) |
 |---|---|---|
 | Large jump (teleport, warp within a level) | No interpolation: a move larger than `SNAP_UNITS` (48 * 16 = 768 units = 48 px, since 16 units = 1 px) is treated as a teleport, so `Lerp` returns the current value | `src/rf_interp.c:85`, `src/rf_interp.c:252` |
+| Keen leaves the door state (`CK_ACT_keenEnterDoor4`) | The door think function warps Keen and recentres the camera. At the first sim frame after it, the camera and every sprite snap together (`prev = cur`), even when the warp is shorter than `SNAP_UNITS`. All door warps in the K4/K5 demos are longer than 48 px, so they were already snapped by distance | `src/rf_interp.c` (`SnapOnKeenTransition`) |
 | Newly created sprite | Drawn at its current position (fresh), with no interpolation: `RFI_NoteSprite` sets `prev = cur` when the sprite draw entry is new | `src/rf_interp.c:227`, `src/id_rf.c:1260`, `src/id_rf.c:1337` |
 | Sprite frame (chunk) change, e.g. walk cycle or state change | Still interpolated: the object position is interpolated, and each chunk's own origin is added at compose time | `src/rf_interp.c:364`, `src/rf_interp.c:365`, `src/rf_interp.c:222` |
 | Level load | `RFI_Reset()` from `RF_NewMap` snaps the camera and all sprites on the first frame of the new map, by dropping the interpolation history | `src/rf_interp.c:237`, `src/id_rf.c:665` |
@@ -40,6 +41,30 @@ In demos (playback, recording, `/DUMPFILE`) `RFL_CalcTics` still runs, so
 | Demos and dumps | Game state is never touched; the vanilla clock is kept during demos, with `RFL_CalcTics` instead of the fixed 2-tic step | `src/rf_interp.c:507`, `src/rf_interp.c:511`, `src/id_rf.c:997` |
 
 If you add a rule, add a row here.
+
+### Snap audit (keen456-decomp #76)
+
+Run on all 15 built-in demos (K4, K5, K6 demos 0-4) in `pixel` mode with
+`OMNI_DEBUG_INTERP_SPRITES=<file.csv>` (one row per sprite per display frame, with the
+interpolated screen position, prev/cur object position, and Keen's action) plus
+`OMNI_DEBUG_INTERP_CAPTURE` for the frames. Findings:
+
+- Door exits (K4 demos 0, 2, 3; K5 demo 2): Keen, a second sprite, and the camera warp 200-1400 px in one
+  sim frame. Already snapped by `SNAP_UNITS`, all in the same sim frame (no frame where one is snapped and
+  the other is not). Added the door-exit rule above for short warps, which no demo contains.
+- Pole grabs (all episodes): Keen's `posX` moves up to 5 px onto the pole centre and the sprite's hotspot
+  changes. Not snapped. The camera follows Keen, so with both interpolated Keen stays put on screen; a
+  trial that snapped only Keen made him slide 8 px against the view over 2 display frames, which is worse.
+- Ledge grab and pull (K5 demos 2, 3; K6 demos 0, 1): 8-14 px steps per sim frame, which is the actual
+  motion in vanilla too (camera locked). Interpolated.
+- Spawns and despawns: a sprite entry without history is `fresh` (`prev = cur`); entries are freed on
+  despawn and reused as fresh. No lerp across a reused entry was seen.
+- Level and world-map loads: `RFI_Reset`; the camera and sprite history are dropped on the new map.
+- Other large steps (jump launch about 15 px per 3-tic demo frame, falling, bouncing enemies that reverse
+  at 8 px per frame) are ordinary motion: they match the vanilla step and are not snapped.
+- Gaps: no demo contains a K5 teleporter/elevator, a K6 door/teleport, the world map, or a death/respawn.
+
+`OMNI_DEBUG_INTERP_SPRITES` also writes `# snap ...` comment lines where a rule fired.
 
 ## Camera smoothing (opt-in)
 

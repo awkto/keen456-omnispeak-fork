@@ -33,6 +33,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *   subpixel  interpolated, positions snapped to 1/4 pixel of a 1280x800 frame
  *
  * DEBUG TOOLING (not a user feature; read only when interpolation is enabled):
+ *   OMNI_DEBUG_INTERP_SPRITES=<file.csv>  per display frame, per sprite: interpolated screen
+ *       position, prev/cur object position and Keen's action (keen456-decomp #76 snap audit).
  *   OMNI_DEBUG_INTERP_CAPTURE=<file>  headless, deterministic capture: raw RGB24
  *       1280x800 frames on a virtual display, time advancing exactly 1/Hz per
  *       frame; RNG seeding is made deterministic.
@@ -71,6 +73,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "ck_cross.h"
 #include "ck_fix.h"
 #include "rf_interp.h"
+#include "ck_act.h"
 #include "ck_def.h"
 #include "ck_play.h"
 
@@ -114,6 +117,7 @@ static double smoothD[2], smoothV[2], smoothT[2], smoothTime;
 #define SMOOTH_PULL 0.100
 #define SMOOTH_MAX_DEV (6 * 16)
 static bool havePrev;
+static const CK_action *lastKeenAct; /* #76: Keen's action at the previous sim frame */
 static uint8_t layerBack[LAYER_W * LAYER_H], layerFore[LAYER_W * LAYER_H];
 static uint8_t out8[OUT_W * OUT_H];
 static uint32_t out32[OUT_W * OUT_H];
@@ -125,6 +129,7 @@ static double lastPresent = -1, statSum, statMin = 1e9, statMax, statT0;
 static int statN;
 static double composeSum;
 static FILE *logFile;
+static FILE *spriteLog; /* #76: OMNI_DEBUG_INTERP_SPRITES, per display frame per sprite */
 static int logCamY;
 static int logCamX, logKeenX, logKeenWorldX, logKeenY, logPlatX, logPlatY;
 static bool logPlat;
@@ -165,6 +170,7 @@ static void RFI_CloseLogs(void)
 {
 	if (logFile) { fclose(logFile); logFile = NULL; }
 	if (presentLog) { fclose(presentLog); presentLog = NULL; }
+	if (spriteLog) { fclose(spriteLog); spriteLog = NULL; }
 	if (debugFrameFile) { fclose(debugFrameFile); debugFrameFile = NULL; }
 }
 
@@ -200,6 +206,15 @@ void RFI_Startup(RFI_Mode m)
 		if (logFile)
 		{
 			fprintf(logFile, "disp,sim,alpha,cam_x_qpx,keen_world_x_qpx,keen_screen_x_qpx,keen_screen_y,plat_screen_x,plat_screen_y,cam_y_qpx,sim_cam_x_u,sim_cam_y_u,cam_dev_x_u,cam_dev_y_u,scorebox_x_qpx,scorebox_y_qpx\n");
+			if (!logsAtexit) { atexit(RFI_CloseLogs); logsAtexit = true; }
+		}
+	}
+	if ((e = getenv("OMNI_DEBUG_INTERP_SPRITES")))
+	{
+		spriteLog = fopen(e, "w");
+		if (spriteLog)
+		{
+			fprintf(spriteLog, "disp,sim,alpha,cam_qpx_x,cam_qpx_y,sde,z,chunk,prev_ux,prev_uy,cur_ux,cur_uy,scr_qpx_x,scr_qpx_y,keen_act\n");
 			if (!logsAtexit) { atexit(RFI_CloseLogs); logsAtexit = true; }
 		}
 	}
@@ -280,12 +295,40 @@ void RFI_Reset(void)
 {
 	havePrev = false;
 	smoothValid = false;
+	lastKeenAct = NULL;
 	for (int z = 0; z < RF_NUM_SPRITE_Z_LAYERS; ++z)
 		for (RF_SpriteDrawEntry *sde = rf_firstSpriteTableEntry[z]; sde; sde = sde->next)
 		{
 			sde->prevUX = sde->curUX;
 			sde->prevUY = sde->curUY;
 		}
+}
+
+/* keen456-decomp #76: leaving the door state (CK_ACT_keenEnterDoor4). The think function warps Keen to
+ * the door's destination and recentres the camera. Warps over SNAP_UNITS already snap by distance;
+ * this also snaps short ones, for the camera and every sprite together (a short warp would otherwise
+ * show the whole view sliding for a frame or two). Called once per sim frame after the sim, so cur
+ * is already the new position.
+ *
+ * Deliberately NOT snapped (audited, see docs/INTERP.md): pole grabs, ledge grabs/pulls, and sprite
+ * frame changes. The camera follows Keen, so a lerped position change is absorbed by the lerped
+ * camera and Keen stays put on screen; snapping Keen alone would make him slide against the view. */
+static void SnapOnKeenTransition(void)
+{
+	const CK_action *a = (ck_keenObj && ck_keenObj->sde) ? ck_keenObj->currentAction : NULL;
+	const CK_action *was = lastKeenAct;
+	lastKeenAct = a;
+	if (!a || !was || a == was || was != CK_ACTION(CK_ACT_keenEnterDoor4))
+		return;
+	prevCamX = rf_scrollXUnit; prevCamY = rf_scrollYUnit;
+	smoothValid = false;
+	for (int z = 0; z < RF_NUM_SPRITE_Z_LAYERS; ++z)
+		for (RF_SpriteDrawEntry *sde = rf_firstSpriteTableEntry[z]; sde; sde = sde->next)
+		{
+			sde->prevUX = sde->curUX;
+			sde->prevUY = sde->curUY;
+		}
+	if (spriteLog) fprintf(spriteLog, "# snap door-exit sim %ld\n", simFrame);
 }
 
 static inline int FloorDiv(int a, int b) { return (a >= 0) ? a / b : -((-a + b - 1) / b); }
@@ -560,6 +603,11 @@ static void Compose(double alpha)
 			if (ck_keenObj && sde == ck_keenObj->sde) { logKeenX = (ux - camX) * S / 16; logKeenWorldX = ux * S / 16; logKeenY = (uy - camY) * S / 16; }
 			if (ck_keenObj && ck_keenState.platform && sde == ck_keenState.platform->sde) { logPlat = true; logPlatX = (ux - camX) * S / 16; logPlatY = (uy - camY) * S / 16; }
 			if (ck_scoreBoxObj && sde == ck_scoreBoxObj->sde) { logSBX = (ux - camX) * S / 16; logSBY = (uy - camY) * S / 16; }
+			if (spriteLog)
+				fprintf(spriteLog, "%ld,%ld,%.3f,%d,%d,%lx,%d,%d,%d,%d,%d,%d,%d,%d,%d\n", dispFrame, simFrame, alpha, camX * S / 16, camY * S / 16,
+					(unsigned long)(uintptr_t)sde, z, sde->chunk, sde->prevUX, sde->prevUY, sde->curUX, sde->curUY,
+					(ux - camX) * S / 16, (uy - camY) * S / 16,
+					(ck_keenObj && sde == ck_keenObj->sde && ck_keenObj->currentAction) ? (int)ck_keenObj->currentAction->compatDosPointer : -1);
 			BlitSprite(sde, (ux - camX) * S / 16, (uy - camY) * S / 16);
 		}
 	}
@@ -674,6 +722,7 @@ void RFI_Frame(void)
 	double dur = tics / 70.0;
 	double now = Now();
 
+	SnapOnKeenTransition();
 	if (!havePrev) { prevCamX = rf_scrollXUnit; prevCamY = rf_scrollYUnit; havePrev = true; }
 	/* First frame, or resumed after a stall: like RFL_CalcTics, catch up at
 	 * most rf_maxTics tics (dropping presents) and let the game run slow for
@@ -746,6 +795,8 @@ void RFI_Frame(void)
 	simFrame++;
 	if (presentLog)
 		fflush(presentLog);
+	if (spriteLog)
+		fflush(spriteLog);
 	if (debugStats && simFrame % 25 == 0) fprintf(stderr, "[interp] sim %ld cam %d,%d\n", simFrame, rf_scrollXUnit, rf_scrollYUnit);
 	for (int i = 0; i < scriptN; ++i)
 	{
