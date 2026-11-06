@@ -22,7 +22,7 @@ cp "$HERE"/bin-wasm/omnispeak.{js,wasm} "$DIST"/
 cp "$HERE"/web/index.html "$DIST"/
 # GPL-2 (#72): the engine is distributed as a binary here, so ship its exact source with it.
 # The tree only holds engine code and Omnispeak's own data tables, never game data.
-tar czf "$DIST/omnispeak-src.tar.gz" -C "$HERE" --exclude='./bin*' --exclude='./obj*' --exclude='./dist' --exclude='./.git' .
+tar czf "$DIST/omnispeak-src.tar.gz" -C "$HERE" --exclude='./bin*' --exclude='./obj*' --exclude='./dist' --exclude='./.git' --exclude='./tests' --exclude='./SDL*' .
 cp "$HERE"/LICENSE "$DIST"/LICENSE.txt
 for ep in ${EPISODES:-4 5 6}; do
   [ -f "$KD/keen$ep/EGAGRAPH.CK$ep" ] || { echo "skip episode $ep (no data)"; continue; }
