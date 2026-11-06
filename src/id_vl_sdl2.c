@@ -482,12 +482,35 @@ void VL_PresentARGB(const uint32_t *argb, int w, int h, const char *title)
 	SDL_Rect renderRect = {(Sint16)vl_renderRgn_x, (Sint16)vl_renderRgn_y, vl_renderRgn_w, vl_renderRgn_h};
 	SDL_Rect fullRect = {(Sint16)vl_fullRgn_x, (Sint16)vl_fullRgn_y, vl_fullRgn_w, vl_fullRgn_h};
 	SDL_UpdateTexture(tex, 0, argb, w * 4);
-	SDL_SetRenderTarget(vl_sdl2_renderer, 0);
-	SDL_RenderSetViewport(vl_sdl2_renderer, 0);
-	SDL_SetRenderDrawColor(vl_sdl2_renderer, 0, 0, 0, 255);
-	SDL_RenderClear(vl_sdl2_renderer);
-	SDL_RenderSetViewport(vl_sdl2_renderer, &fullRect);
-	SDL_RenderCopy(vl_sdl2_renderer, tex, 0, &renderRect);
+	// Same geometry as VL_SDL2_Present: renderRect is in the integer-scaled
+	// space, so without integer scaling it is drawn into vl_sdl2_scaledTarget
+	// and that is stretched to fullRect (drawing it straight into the fullRect
+	// viewport squashed or cropped the picture whenever the window was not at
+	// an integer scale).
+	const Uint8 *bc = VL_EGARGBColorTable[vl_emuegavgaadapter.bordercolor];
+	if (vl_sdl2_scaledTarget)
+	{
+		SDL_SetRenderTarget(vl_sdl2_renderer, vl_sdl2_scaledTarget);
+		SDL_SetRenderDrawColor(vl_sdl2_renderer, bc[0], bc[1], bc[2], 255);
+		SDL_RenderClear(vl_sdl2_renderer);
+		SDL_RenderCopy(vl_sdl2_renderer, tex, 0, &renderRect);
+		SDL_SetRenderTarget(vl_sdl2_renderer, 0);
+		SDL_RenderSetViewport(vl_sdl2_renderer, 0);
+		SDL_SetRenderDrawColor(vl_sdl2_renderer, 0, 0, 0, 255);
+		SDL_RenderClear(vl_sdl2_renderer);
+		SDL_RenderCopy(vl_sdl2_renderer, vl_sdl2_scaledTarget, 0, &fullRect);
+	}
+	else
+	{
+		SDL_SetRenderTarget(vl_sdl2_renderer, 0);
+		SDL_RenderSetViewport(vl_sdl2_renderer, 0);
+		SDL_SetRenderDrawColor(vl_sdl2_renderer, 0, 0, 0, 255);
+		SDL_RenderClear(vl_sdl2_renderer);
+		SDL_RenderSetViewport(vl_sdl2_renderer, &fullRect);
+		SDL_SetRenderDrawColor(vl_sdl2_renderer, bc[0], bc[1], bc[2], 255);
+		SDL_RenderFillRect(vl_sdl2_renderer, 0);
+		SDL_RenderCopy(vl_sdl2_renderer, tex, 0, &renderRect);
+	}
 	SDL_RenderPresent(vl_sdl2_renderer);
 }
 
