@@ -20,6 +20,10 @@ make PLATFORM=emscripten RENDERER=sdl2 WITH_KEEN6=1 KEEN6VER="$K6VER" -j"$(nproc
 DIST=$HERE/dist; rm -rf "$DIST"; mkdir -p "$DIST"
 cp "$HERE"/bin-wasm/omnispeak.{js,wasm} "$DIST"/
 cp "$HERE"/web/index.html "$DIST"/
+# GPL-2 (#72): the engine is distributed as a binary here, so ship its exact source with it.
+# The tree only holds engine code and Omnispeak's own data tables, never game data.
+tar czf "$DIST/omnispeak-src.tar.gz" -C "$HERE" --exclude='./bin*' --exclude='./obj*' --exclude='./dist' --exclude='./.git' .
+cp "$HERE"/LICENSE "$DIST"/LICENSE.txt
 for ep in ${EPISODES:-4 5 6}; do
   [ -f "$KD/keen$ep/EGAGRAPH.CK$ep" ] || { echo "skip episode $ep (no data)"; continue; }
   tabs=$HERE/data/keen$ep; [ "$ep" = 6 ] && tabs=$HERE/data/$K6VER
