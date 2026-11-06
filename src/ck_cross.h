@@ -104,6 +104,15 @@ int CK_Cross_strncasecmp(const char *s1, const char *s2, size_t n);
 // And a function to clamp the result.
 #define CK_Cross_clamp(x, a, b) CK_Cross_max(CK_Cross_min((x), (b)), (a))
 
+#ifdef __EMSCRIPTEN__
+// WebAssembly: yield to the browser event loop (Asterify). Rate-limited variant for busy loops.
+void CK_Cross_Yield(void);
+void CK_Cross_YieldNow(void);
+#else
+#define CK_Cross_Yield() ((void)0)
+#define CK_Cross_YieldNow() ((void)0)
+#endif
+
 // Safe strcpy variant which Quit()s if the buffer is too small.
 size_t CK_Cross_strscpy(char* dst, const char* src, size_t bufsiz);
 

@@ -26,6 +26,7 @@ This Makefile supports the following options:
                   win64   = MinGW cross-build for 64-bit Windows
                   dos     = DJGPP cross-build for DOS (with DOS Extender)
                   gcw0    = OpenDingux cross-build for GCW Zero
+                  emscripten = WebAssembly (emcc, SDL2 port, asyncify)
 
   RENDERER      the type of video output API (not available for PLATFORM=dos)
 		  sdl1    = SDL 1.2 (deprecated; no win64 support)
@@ -157,6 +158,15 @@ ifeq ($(PLATFORM), gcw0)
         DEFAULT_BUILDASCPP = 1
         # HACK: gcw0 misel architecture doesn't define O_PATH
         CXXFLAGS += -DO_PATH=010000000
+endif
+
+ifeq ($(PLATFORM), emscripten)
+	# WebAssembly via Emscripten (see ../tools/build-wasm.sh); needs emcc on PATH.
+	OUTDIR_SUFFIX := -wasm
+	EXE_EXT = .js
+	DEFAULT_RENDERER = sdl2
+	DEFAULT_BUILDASCPP = 0
+	COMPILER = emcc
 endif
 
 ifeq ($(OUTDIR_SUFFIX),INVALID)
@@ -308,6 +318,15 @@ ifneq (,$(findstring sdl,$(RENDERER)))
 	endif
 	SDL_CFLAGS = `$(SDL_CONFIG) --cflags` -DWITH_SDL
 	SDL_LIBS = `$(SDL_CONFIG) $(SDL_LIB_QUERY)`
+endif
+
+# Emscripten: SDL2 comes from the emscripten port, not sdl2-config
+ifeq ($(PLATFORM), emscripten)
+	SDL_CFLAGS = -sUSE_SDL=2 -DWITH_SDL
+	SDL_LIBS = -sUSE_SDL=2
+	SDL_CONFIG =
+	LDFLAGS += -sASYNCIFY -sASYNCIFY_STACK_SIZE=262144 -sALLOW_MEMORY_GROWTH -sINITIAL_MEMORY=64MB \
+		-sEXPORTED_RUNTIME_METHODS=FS,IDBFS -sFORCE_FILESYSTEM -lidbfs.js
 endif
 
 # set Windows-specific parameters

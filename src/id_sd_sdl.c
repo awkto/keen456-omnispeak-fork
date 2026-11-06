@@ -499,7 +499,12 @@ void SD_SDL_Startup(void)
 		sd_oplEmulator = SD_OPL_EMULATOR_DBOPL;
 	}
 
+#ifdef __EMSCRIPTEN__
+	/* No threads in the browser: the audio callback drives the PIT ticks. */
+	SD_SDL_useTimerFallback = false;
+#else
 	SD_SDL_useTimerFallback = !CFG_GetConfigBool("sd_sdl_audioSync", false);
+#endif
 
 	for (int i = 0; i < us_argc; ++i)
 	{
@@ -637,6 +642,10 @@ void SD_SDL_Unlock()
 
 void SD_SDL_WaitTick()
 {
+#ifdef __EMSCRIPTEN__
+	CK_Cross_YieldNow(); /* single-threaded: ticks arrive via the audio callback between yields */
+	return;
+#endif
 	SDL_mutex *mtx = SDL_CreateMutex();
 	SDL_LockMutex(mtx);
 	// Timeout of 2ms, as the PIT rate is ~1.1ms..

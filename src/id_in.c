@@ -316,6 +316,7 @@ void IN_SaveKbdControls()
 
 void IN_PumpEvents()
 {
+	CK_Cross_Yield();
 	in_backend->pumpEvents();
 }
 

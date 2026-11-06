@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "id_sd.h"
 #include "id_us.h"
 #include "id_vl.h"
+#include "ck_cross.h"
 
 #include <SDL.h>
 #include <string.h>
@@ -350,12 +351,26 @@ void IN_SDL_PumpEvents()
 void IN_SDL_WaitKey()
 {
 	SDL_Event event;
+#ifdef __EMSCRIPTEN__
+	/* SDL_WaitEvent would busy-wait; poll and yield to the browser instead. */
+	for (;;)
+	{
+		while (SDL_PollEvent(&event))
+		{
+			IN_SDL_HandleSDLEvent(&event);
+			if (event.type == SDL_KEYDOWN)
+				return;
+		}
+		CK_Cross_YieldNow();
+	}
+#else
 	while (SDL_WaitEvent(&event))
 	{
 		IN_SDL_HandleSDLEvent(&event);
 		if (event.type == SDL_KEYDOWN)
 			break;
 	}
+#endif
 }
 
 void IN_SDL_Startup(bool disableJoysticks)

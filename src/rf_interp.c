@@ -629,6 +629,7 @@ static void Present(void)
 	}
 	/* No vsync to block on: sleep until the next refresh slot instead of spinning. */
 	/* Never force pacing on top of vsync: only pace when vsync is off or missing (keen456-decomp #74). */
+#ifndef __EMSCRIPTEN__ /* browser: VL_PresentARGB awaits requestAnimationFrame */
 	if (!vl_swapInterval || noVsync)
 	{
 		double wait = nextPresent - Now();
@@ -637,6 +638,7 @@ static void Present(void)
 		double now = Now();
 		nextPresent = CK_Cross_max(nextPresent + 1.0 / hz, now);
 	}
+#endif
 	double before = Now();
 	VL_PresentARGB(out32, OUT_W, OUT_H, title[0] ? title : NULL);
 	double after = Now();

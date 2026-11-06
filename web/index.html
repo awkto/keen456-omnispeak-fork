@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Keen 4/5/6 (Omnispeak, WebAssembly)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+html,body{margin:0;height:100%;background:#000;color:#ddd;font-family:sans-serif}
+#launcher{max-width:420px;margin:8vh auto;padding:1em;line-height:2.2}
+#launcher button{font-size:1.1em;margin:.2em;padding:.4em 1em}
+#stage{display:none;width:100vw;height:100vh;align-items:center;justify-content:center}
+canvas{width:min(100vw,calc(100vh*4/3));height:min(100vh,calc(100vw*3/4));image-rendering:pixelated;outline:none;background:#000}
+#fs{position:fixed;top:4px;right:4px;opacity:.5;z-index:2}
+#status{position:fixed;left:4px;bottom:4px;font-size:12px;opacity:.7}
+</style></head><body>
+<div id="launcher">
+<h2>Commander Keen</h2>
+<div>Smoothing: <select id="smooth"><option value="off">Off</option><option value="grid">Grid</option><option value="pixel">Pixel</option><option value="subpixel" selected>Subpixel</option></select>
+<label><input type="checkbox" id="cam" checked> Camera smoothing</label></div>
+<div id="btns"></div>
+<p style="font-size:.8em;opacity:.7">Click a button to start (this also enables audio). Saves persist in this browser.</p>
+</div>
+<div id="stage"><canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas></div>
+<button id="fs" style="display:none">Fullscreen</button><div id="status"></div>
+<script>
+const EPISODES = {4:"Keen 4", 5:"Keen 5", 6:"Keen 6"};
+const avail = (window.KEEN_EPISODES || [4,5,6]);
+for (const e of avail){const b=document.createElement('button');b.textContent=EPISODES[e];b.onclick=()=>start(e);btns.appendChild(b);}
+fs.onclick=()=>canvas.requestFullscreen();
+function loadScript(src){return new Promise((ok,err)=>{const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=()=>err(new Error(src));document.body.appendChild(s);});}
+async function start(ep){
+  launcher.style.display='none'; stage.style.display='flex'; fs.style.display='';
+  const mode=smooth.value, args=['/EPISODE',String(ep),'/USERPATH','/save'];
+  if(mode==='off') args.push('/NOINTERP'); else args.push('/PROFILE','enhanced','/INTERP',mode);
+  if(cam.checked) args.push('/FIX','camera-smoothing');
+  const M = window.Module = {
+    arguments: args, canvas: canvas, preRun: [],
+    print: t=>console.log(t), printErr: t=>console.warn(t),
+    setStatus: t=>{status.textContent=t;},
+    onAbort: w=>{status.textContent='ABORT: '+w;},
+    locateFile: p=>p,
+  };
+  M.preRun.push(()=>{
+    // persistent saves/config in IndexedDB
+    M.addRunDependency('idbfs');
+    const FS=M.FS||window.FS;
+    FS.mkdir('/save'); FS.mount(M.IDBFS||FS.filesystems.IDBFS,{},'/save');
+    FS.syncfs(true,err=>{ M.removeRunDependency('idbfs');
+      setInterval(()=>FS.syncfs(false,()=>{}),5000); });
+  });
+  await loadScript('k'+ep+'.js');       // registers the data package into preRun
+  canvas.addEventListener('mousedown',()=>canvas.focus());
+  window.addEventListener('keydown',e=>{ if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault(); },{capture:true});
+  await loadScript('omnispeak.js');
+  canvas.focus();
+}
+</script></body></html>

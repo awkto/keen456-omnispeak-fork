@@ -4,6 +4,13 @@
 #include "id_vl.h"
 #include "id_vl_private.h"
 #include "ck_cross.h"
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+/* Block (asyncify) until the next browser animation frame: vsync pacing. */
+EM_ASYNC_JS(void, VL_WaitRAF, (void), {
+	await new Promise(r => requestAnimationFrame(r));
+});
+#endif
 
 static SDL_Window *vl_sdl2_window;
 static SDL_Renderer *vl_sdl2_renderer;
@@ -382,6 +389,9 @@ static void VL_SDL2_Present(void *surface, int scrlX, int scrlY, bool singleBuff
 	}
 
 	SDL_RenderPresent(vl_sdl2_renderer);
+#ifdef __EMSCRIPTEN__
+	VL_WaitRAF();
+#endif
 }
 
 static int VL_SDL2_GetActiveBufferId(void *surface)
@@ -422,7 +432,14 @@ static void VL_SDL2_FlushParams()
 
 static void VL_SDL2_WaitVBLs(int vbls)
 {
+#ifdef __EMSCRIPTEN__
+	double end = emscripten_get_now() + vbls * 1000.0 / 70;
+	do
+		CK_Cross_YieldNow();
+	while (emscripten_get_now() < end);
+#else
 	SDL_Delay(vbls * 1000 / 70);
+#endif
 }
 
 // Unfortunately, we can't take advantage of designated initializers in C++.
@@ -512,6 +529,9 @@ void VL_PresentARGB(const uint32_t *argb, int w, int h, const char *title)
 		SDL_RenderCopy(vl_sdl2_renderer, tex, 0, &renderRect);
 	}
 	SDL_RenderPresent(vl_sdl2_renderer);
+#ifdef __EMSCRIPTEN__
+	VL_WaitRAF();
+#endif
 }
 
 // Single-buffered: nothing to flip.

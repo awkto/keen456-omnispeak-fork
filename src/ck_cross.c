@@ -132,3 +132,22 @@ size_t CK_Cross_strscpy(char* dst, const char* src, size_t bufsiz)
 	}
 	Quit("strscpy: Buffer too small!");
 };
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+void CK_Cross_YieldNow(void)
+{
+	emscripten_sleep(0);
+}
+
+void CK_Cross_Yield(void)
+{
+	static double last = 0;
+	double now = emscripten_get_now();
+	if (now - last >= 4.0)
+	{
+		emscripten_sleep(0);
+		last = emscripten_get_now();
+	}
+}
+#endif
