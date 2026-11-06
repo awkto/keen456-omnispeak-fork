@@ -34,6 +34,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "ck_cross.h"
 #include "ck_def.h"
 #include "ck_play.h"
+#include "ck_fix.h"
+#ifdef WITH_RF_INTERP
+#include "rf_interp.h"
+#endif
 
 #define US_MAX_JOYSTICK_NAME_LENGTH 28
 
@@ -113,6 +117,37 @@ bool CK_US_AspectCorrectMenuProc(US_CardMsg msg, US_CardItem *item)
 	CK_US_UpdateOptionsMenus();
 	return true;
 }
+
+#ifdef WITH_RF_INTERP
+bool CK_US_SmoothingMenuProc(US_CardMsg msg, US_CardItem *item)
+{
+	if (msg != US_MSG_CardEntered)
+		return false;
+
+	// Off -> Grid -> Pixel -> Subpixel -> Off
+	RFI_Mode cur = RFI_Enabled() ? RFI_GetMode() : RFI_Mode_Off;
+	RFI_Mode next = (cur == RFI_Mode_Subpixel) ? RFI_Mode_Off : (RFI_Mode)(cur + 1);
+	CK_Fix_SetEnabled(CK_FIX_Interpolation, next != RFI_Mode_Off);
+	RFI_SetMode(next);
+	CFG_SetConfigEnum("interpolation", rfi_modeStrings, next);
+	USL_CtlDialog("Smoothing mode changed", "Press any key", NULL);
+	CK_US_UpdateOptionsMenus();
+	return true;
+}
+
+bool CK_US_CameraSmoothingMenuProc(US_CardMsg msg, US_CardItem *item)
+{
+	if (msg != US_MSG_CardEntered)
+		return false;
+
+	bool on = !CK_Fix_Enabled(CK_FIX_CameraSmoothing);
+	CK_Fix_SetEnabled(CK_FIX_CameraSmoothing, on);
+	CFG_SetConfigBool("fix_camera-smoothing", on);
+	USL_CtlDialog(on ? "Camera smoothing now on" : "Camera smoothing now off", "Press any key", NULL);
+	CK_US_UpdateOptionsMenus();
+	return true;
+}
+#endif
 
 bool CK_US_BorderMenuProc(US_CardMsg msg, US_CardItem *item)
 {
@@ -592,6 +627,10 @@ US_Card ck_us_aspectCorrectMenu = {0, 0, 0, 0, 0, &CK_US_AspectCorrectMenuProc, 
 US_Card ck_us_borderMenu = {0, 0, 0, 0, 0, &CK_US_BorderMenuProc, 0, 0, 0};
 US_Card ck_us_integerMenu = {0, 0, 0, 0, 0, &CK_US_IntegerMenuProc, 0, 0, 0};
 US_Card ck_us_vsyncMenu = {0, 0, 0, 0, 0, &CK_US_VSyncMenuProc, 0, 0, 0};
+#ifdef WITH_RF_INTERP
+US_Card ck_us_smoothingMenu = {0, 0, 0, 0, 0, &CK_US_SmoothingMenuProc, 0, 0, 0};
+US_Card ck_us_cameraSmoothingMenu = {0, 0, 0, 0, 0, &CK_US_CameraSmoothingMenuProc, 0, 0, 0};
+#endif
 #endif
 #ifdef EXTRA_JOYSTICK_OPTIONS
 US_Card ck_us_joyMotionModeMenu = {0, 0, 0, 0, 0, &CK_US_JoyMotionModeMenuProc, 0, 0, 0};
@@ -611,6 +650,10 @@ US_CardItem ck_us_optionsMenuItems[] = {
 	{US_ITEM_Submenu, 0, IN_SC_B, "", US_Comm_None, &ck_us_borderMenu, 0, 0},
 	{US_ITEM_Submenu, 0, IN_SC_I, "", US_Comm_None, &ck_us_integerMenu, 0, 0},
 	{US_ITEM_Submenu, 0, IN_SC_V, "", US_Comm_None, &ck_us_vsyncMenu, 0, 0},
+#ifdef WITH_RF_INTERP
+	{US_ITEM_Submenu, 0, IN_SC_O, "", US_Comm_None, &ck_us_smoothingMenu, 0, 0},
+	{US_ITEM_Submenu, 0, IN_SC_G, "", US_Comm_None, &ck_us_cameraSmoothingMenu, 0, 0},
+#endif
 #endif
 #ifdef QUICKSAVE_ENABLED
 	{US_ITEM_Submenu, 0, IN_SC_Q, "", US_Comm_None, &ck_us_quickSaveMenu, 0, 0},
@@ -1387,13 +1430,24 @@ void CK_US_UpdateOptionsMenus(void)
 	ck_us_optionsMenuItems[6].caption = vl_hasOverscanBorder ? "OVERSCAN BORDER (ON)" : "OVERSCAN BORDER (OFF)";
 	ck_us_optionsMenuItems[7].caption = vl_isIntegerScaled ? "INTEGER SCALING (ON)" : "INTEGER SCALING (OFF)";
 	ck_us_optionsMenuItems[8].caption = vl_swapInterval ? "VSYNC (ON)" : "VSYNC (OFF)";
+#ifdef WITH_RF_INTERP
+	{
+		static const char *smoothCaps[] = {"SMOOTHING (OFF)", "SMOOTHING (GRID)", "SMOOTHING (PIXEL)", "SMOOTHING (SUBPIXEL)"};
+		ck_us_optionsMenuItems[9].caption = smoothCaps[RFI_Enabled() ? RFI_GetMode() : RFI_Mode_Off];
+		ck_us_optionsMenuItems[10].caption = CK_Fix_Enabled(CK_FIX_CameraSmoothing) ? "CAMERA SMOOTHING (ON)" : "CAMERA SMOOTHING (OFF)";
+	}
+#endif
 #endif
 #ifdef EXTRA_JOYSTICK_OPTIONS
 	ck_us_joyconfMenuItems[(int)IN_joy_modern].caption = in_joyAdvancedMotion ? "MOTION MODE (MODERN)" : "MOTION MODE (CLASSIC)";
 #endif
 #ifdef QUICKSAVE_ENABLED
 #ifdef EXTRA_GRAPHICS_OPTIONS
+#ifdef WITH_RF_INTERP
+#define QUICKSAVE_OPTION_NUMBER 11
+#else
 #define QUICKSAVE_OPTION_NUMBER 9
+#endif
 #else
 #define QUICKSAVE_OPTION_NUMBER 4
 #endif

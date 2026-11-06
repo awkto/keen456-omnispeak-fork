@@ -94,7 +94,7 @@ void VL_PresentARGB(const uint32_t *argb, int w, int h, const char *title);
 void VL_FlipPageNoPresent(void);
 
 static int mode = RFI_Mode_Off, hz = 60;
-static bool enabled, debugStats, hzForced;
+static bool enabled, debugStats, hzForced, fullyStarted;
 static FILE *presentLog;
 static bool logsAtexit;
 static double presentT0 = -1, nextPresent;
@@ -174,6 +174,7 @@ void RFI_Startup(RFI_Mode m)
 	enabled = (m != RFI_Mode_Off);
 	if (!enabled)
 		return;
+	fullyStarted = true;
 	if ((e = getenv("OMNI_DEBUG_INTERP_HZ")) && atoi(e) > 0)
 	{
 		hz = atoi(e);
@@ -229,6 +230,26 @@ void RFI_Startup(RFI_Mode m)
 bool RFI_Enabled(void)
 {
 	return enabled;
+}
+
+RFI_Mode RFI_GetMode(void)
+{
+	return (RFI_Mode)mode;
+}
+
+void RFI_SetMode(RFI_Mode m)
+{
+	if (m == RFI_Mode_Off)
+	{
+		enabled = false;
+		mode = RFI_Mode_Off;
+		return;
+	}
+	if (!fullyStarted)
+		RFI_Startup(m); // first time on: full init (display rate etc.)
+	enabled = true;
+	mode = m;
+	RFI_Reset();
 }
 
 // Debug capture only: make level RNG seeding deterministic.

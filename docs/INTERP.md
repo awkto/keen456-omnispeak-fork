@@ -178,3 +178,16 @@ The compositor produces a 1280x800 ARGB frame. Each backend only has to show it:
 Recommendation: ship `sdl2` for release builds. It is the most portable path, and
 its SDL_Renderer picks GL, GLES, D3D or Metal itself. `sdl2gl` now works too, so
 the upstream Linux default is not a trap.
+
+## Menu
+
+With `WITH_RF_INTERP`, Configure > Options has two extra items (keen456-decomp #97):
+
+- **Smoothing**: cycles Off, Grid, Pixel, Subpixel. Off turns the `interpolation`
+  fix off. The choice is saved as the `interpolation` config key, the same key
+  `/INTERP` overrides, so it survives restarts.
+- **Camera smoothing**: toggles the `camera-smoothing` fix, saved as
+  `fix_camera-smoothing`.
+
+Both are presentation-only, so demos and dumps are unaffected. Smoothing can be
+switched on at runtime even if the game started with it off.

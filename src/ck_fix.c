@@ -114,6 +114,11 @@ bool CK_Fix_Enabled(CK_FixId id)
 	return ck_fixEnabled[id];
 }
 
+void CK_Fix_SetEnabled(CK_FixId id, bool enabled)
+{
+	ck_fixEnabled[id] = enabled;
+}
+
 bool CK_Fix_Active(CK_FixId id)
 {
 	if (!ck_fixEnabled[id])

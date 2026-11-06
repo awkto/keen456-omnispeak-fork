@@ -88,6 +88,7 @@ void CK_Fix_Startup(void);
 CK_FixProfile CK_Fix_GetProfile(void);
 // Whether the fix is enabled by the profile and options, regardless of demos.
 bool CK_Fix_Enabled(CK_FixId id);
+void CK_Fix_SetEnabled(CK_FixId id, bool enabled); // runtime toggle (menu)
 // Whether the fix should be applied right now.
 bool CK_Fix_Active(CK_FixId id);
 // Writes the profile and the state of each fix as text (dump sidecar file).
