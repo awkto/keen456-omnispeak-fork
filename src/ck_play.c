@@ -2293,10 +2293,12 @@ void CK_PlayLoop()
 		CK_HandleInput();
 
 		// Set, unset active objects.
-		int wakeX0, wakeX1;
-		CK_ViewTilesX(&wakeX0, &wakeX1); // keen456-omnispeak-fork #103: the 320-px window in vanilla
 		for (CK_object *currentObj = ck_keenObj; currentObj; currentObj = currentObj->next)
 		{
+			/* keen456-omnispeak-fork #103: the 320-px window in vanilla. Per object, as before:
+			 * an earlier object's think (Keen at a door) can move the camera within this loop. */
+			int wakeX0, wakeX1;
+			CK_ViewTilesX(&wakeX0, &wakeX1);
 
 			if (!currentObj->active &&
 				(currentObj->clipRects.tileX2 >= wakeX0 - 1) &&
