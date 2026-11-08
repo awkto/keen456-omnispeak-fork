@@ -6,6 +6,8 @@
 # Copy INTO that directory (rsync --delete); never replace the directory itself, or the
 # container keeps serving the old, deleted inode. The site contains game data: it is only
 # served from pro, never baked into an image.
+# Also mirrors to keen456x.box.dnsif.ca: static nginx vhost on box, root /srv/keen456x, reached over
+# WireGuard (BOX_HOST, default 10.77.0.1). BOX_HOST= (empty) skips it.
 set -euo pipefail
 tgz=${1:?usage: $0 dist.tar.gz}
 site=$HOME/keen456x/site
@@ -20,3 +22,11 @@ sleep 2
 for f in index.html omnispeak.wasm $(cd "$site" && ls k*.data); do
   printf '%s ' "$f"; curl -s -o /dev/null -w '%{http_code}\n' "https://keen456x.pro.dnsif.ca/$f"
 done
+
+box=${BOX_HOST-10.77.0.1}
+if [ -n "$box" ]; then
+  rsync -a --delete "$site/" "$box:/srv/keen456x/"
+  for f in index.html omnispeak.wasm $(cd "$site" && ls k*.data); do
+    printf 'box %s ' "$f"; curl -s -o /dev/null -w '%{http_code}\n' "https://keen456x.box.dnsif.ca/$f"
+  done
+fi
