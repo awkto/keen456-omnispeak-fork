@@ -76,6 +76,16 @@ Omnispeak supports several command-line options, some of which are:
 		  of worse frame pacing.)
 	/DEMOFILE <filename>
 		- Plays the demo recorded with Keen's F10+D cheat in filename.
+	/MODERNCONTROLS, /NOMODERNCONTROLS
+		- Modern pogo on the keyboard pogo key (Alt): one press toggles
+		  pogo and also jumps (the Pogo+Jump "super-bounce"); if the key
+		  is held for at least /POGOHOLD ms, releasing it taps pogo again
+		  to retract it. Never applies to demos. Also the
+		  'fix_modern-controls' config option and Options menu entry;
+		  default off.
+	/POGOHOLD <ms|off>
+		- Modern controls auto-retract hold time (default 180; the old
+		  shell offered 120, 150, 180, 240, 300). Config: 'modernPogoHold'.
 	/INTERP [off|grid|pixel|subpixel]
 		- Presents frames at the display's refresh rate, interpolating
 		  the camera and sprites between the game's 35 Hz frames.

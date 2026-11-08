@@ -118,6 +118,19 @@ bool CK_US_AspectCorrectMenuProc(US_CardMsg msg, US_CardItem *item)
 	return true;
 }
 
+bool CK_US_ModernControlsMenuProc(US_CardMsg msg, US_CardItem *item)
+{
+	if (msg != US_MSG_CardEntered)
+		return false;
+
+	bool on = !CK_Fix_Enabled(CK_FIX_ModernControls);
+	CK_Fix_SetEnabled(CK_FIX_ModernControls, on);
+	CFG_SetConfigBool("fix_modern-controls", on);
+	USL_CtlDialog(on ? "Modern controls now on" : "Modern controls now off", "Press any key", NULL);
+	CK_US_UpdateOptionsMenus();
+	return true;
+}
+
 #ifdef WITH_RF_INTERP
 bool CK_US_SmoothingMenuProc(US_CardMsg msg, US_CardItem *item)
 {
@@ -635,6 +648,7 @@ US_Card ck_us_cameraSmoothingMenu = {0, 0, 0, 0, 0, &CK_US_CameraSmoothingMenuPr
 #ifdef EXTRA_JOYSTICK_OPTIONS
 US_Card ck_us_joyMotionModeMenu = {0, 0, 0, 0, 0, &CK_US_JoyMotionModeMenuProc, 0, 0, 0};
 #endif
+US_Card ck_us_modernControlsMenu = {0, 0, 0, 0, 0, &CK_US_ModernControlsMenuProc, 0, 0, 0};
 #ifdef QUICKSAVE_ENABLED
 US_Card ck_us_quickSaveMenu = {0, 0, 0, 0, 0, &CK_US_QuickSaveConfirmMenuProc, 0, 0, 0};
 #endif
@@ -655,6 +669,7 @@ US_CardItem ck_us_optionsMenuItems[] = {
 	{US_ITEM_Submenu, 0, IN_SC_G, "", US_Comm_None, &ck_us_cameraSmoothingMenu, 0, 0},
 #endif
 #endif
+	{US_ITEM_Submenu, 0, IN_SC_P, "", US_Comm_None, &ck_us_modernControlsMenu, 0, 0},
 #ifdef QUICKSAVE_ENABLED
 	{US_ITEM_Submenu, 0, IN_SC_Q, "", US_Comm_None, &ck_us_quickSaveMenu, 0, 0},
 #endif
@@ -1417,6 +1432,16 @@ void CK_US_SetJoystickName(US_CardItem *item, int joystick)
 	item->caption = str[joystick];
 }
 #endif
+#ifdef EXTRA_GRAPHICS_OPTIONS
+#ifdef WITH_RF_INTERP
+#define MODERN_OPTION_NUMBER 11
+#else
+#define MODERN_OPTION_NUMBER 9
+#endif
+#else
+#define MODERN_OPTION_NUMBER 4
+#endif
+#define QUICKSAVE_OPTION_NUMBER (MODERN_OPTION_NUMBER + 1)
 void CK_US_UpdateOptionsMenus(void)
 {
 
@@ -1438,19 +1463,11 @@ void CK_US_UpdateOptionsMenus(void)
 	}
 #endif
 #endif
+	ck_us_optionsMenuItems[MODERN_OPTION_NUMBER].caption = CK_Fix_Enabled(CK_FIX_ModernControls) ? "MODERN CONTROLS (ON)" : "MODERN CONTROLS (OFF)";
 #ifdef EXTRA_JOYSTICK_OPTIONS
 	ck_us_joyconfMenuItems[(int)IN_joy_modern].caption = in_joyAdvancedMotion ? "MOTION MODE (MODERN)" : "MOTION MODE (CLASSIC)";
 #endif
 #ifdef QUICKSAVE_ENABLED
-#ifdef EXTRA_GRAPHICS_OPTIONS
-#ifdef WITH_RF_INTERP
-#define QUICKSAVE_OPTION_NUMBER 11
-#else
-#define QUICKSAVE_OPTION_NUMBER 9
-#endif
-#else
-#define QUICKSAVE_OPTION_NUMBER 4
-#endif
 	ck_us_optionsMenuItems[QUICKSAVE_OPTION_NUMBER].caption = CFG_GetConfigBool("ck_quickSaveConfirm", true) ? "CONFIRM QUICKSAVE (ON)" : "CONFIRM QUICKSAVE (OFF)";
 #endif
 

@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "id_vl.h"
 #include "id_fs.h"
 #include "ck_cross.h"
+#include "ck_fix.h"
 
 #include <stdlib.h> /* For abs() */
 #include <string.h>
@@ -726,6 +727,75 @@ void IN_ReadCursor(IN_Cursor *cursor)
 	}
 }
 
+// ---- Modern pogo (keen456-decomp #100) ----------------------------------------
+// Ported from the old DOSBox-X shell (js/app.js setupDesktopPogo). Keyboard pogo key only:
+//  - Pressing the pogo key presses pogo and, ~30 ms later, also holds jump until the key is
+//    released: the Pogo+Jump "super-bounce" without having to time two keys.
+//  - A short tap leaves pogo toggled on. If the key was held for at least in_modernPogoHoldMs,
+//    releasing it taps pogo once more ~30 ms later (for ~90 ms) to retract it again.
+// Times are game tics (70 Hz). Never used during demos: see IN_ModernPogoActive.
+int in_modernPogoHoldMs = 180;
+
+#define MP_JUMP_DELAY 2	 // ~30 ms
+#define MP_RETRACT_DELAY 2 // ~30 ms
+#define MP_RETRACT_LEN 6   // ~90 ms
+
+static enum { MP_Idle, MP_Held, MP_Gap, MP_Retract } in_mpState = MP_Idle;
+static uint32_t in_mpT0;
+
+static bool IN_ModernPogoActive(void)
+{
+	// Explicit demo check as well as the fix's own: demos must replay exactly like DOS.
+	return in_demoState == IN_Demo_Off && CK_FIX(ModernControls);
+}
+
+static void IN_ModernPogo(bool keyDown, bool *jump, bool *pogo)
+{
+	uint32_t now = SD_GetTimeCount();
+	uint32_t holdTics = (in_modernPogoHoldMs > 0) ? ((uint32_t)in_modernPogoHoldMs * 70 + 500) / 1000 : 0;
+
+	if (keyDown && in_mpState != MP_Held)
+	{
+		in_mpState = MP_Held;
+		in_mpT0 = now;
+	}
+	switch (in_mpState)
+	{
+	case MP_Held:
+		if (!keyDown)
+		{
+			if (holdTics && now - in_mpT0 >= holdTics)
+			{
+				in_mpState = MP_Gap;
+				in_mpT0 = now;
+			}
+			else
+				in_mpState = MP_Idle;
+			break;
+		}
+		*pogo = true;
+		if (now - in_mpT0 >= MP_JUMP_DELAY)
+			*jump = true;
+		break;
+	case MP_Gap:
+		if (now - in_mpT0 >= MP_RETRACT_DELAY)
+		{
+			in_mpState = MP_Retract;
+			in_mpT0 = now;
+			*pogo = true;
+		}
+		break;
+	case MP_Retract:
+		if (now - in_mpT0 < MP_RETRACT_LEN)
+			*pogo = true;
+		else
+			in_mpState = MP_Idle;
+		break;
+	default:
+		break;
+	}
+}
+
 void IN_ReadControls(int player, IN_ControlFrame *controls)
 {
 	controls->xDirection = IN_motion_None;
@@ -814,8 +884,14 @@ void IN_ReadControls(int player, IN_ControlFrame *controls)
 
 			if (IN_GetKeyState(in_kbdControls.jump))
 				controls->jump = true;
-			if (IN_GetKeyState(in_kbdControls.pogo))
-				controls->pogo = true;
+			if (IN_ModernPogoActive())
+				IN_ModernPogo(IN_GetKeyState(in_kbdControls.pogo), &controls->jump, &controls->pogo);
+			else
+			{
+				in_mpState = MP_Idle;
+				if (IN_GetKeyState(in_kbdControls.pogo))
+					controls->pogo = true;
+			}
 			// TODO: Handle fire input separately? (e.g. two-button firing)
 			if (IN_GetKeyState(in_kbdControls.fire))
 				controls->button2 = true;
