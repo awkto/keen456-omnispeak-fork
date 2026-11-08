@@ -1244,6 +1244,7 @@ void VL_SwapOnNextPresent()
 
 #ifdef WITH_RF_INTERP
 bool RFI_PresentWideStill(void);
+void VL_FlipPageNoPresent(void);
 #endif
 
 void VL_Present()
@@ -1254,6 +1255,9 @@ void VL_Present()
 	 * status window, fades) is shown over the wide view instead of a pillarboxed frame. */
 	if (RFI_PresentWideStill())
 	{
+		/* the page flip the backend's present would have done (double-buffered sdl2gl) */
+		if (vl_swapOnNextPresent)
+			VL_FlipPageNoPresent();
 		vl_swapOnNextPresent = false;
 		return;
 	}
