@@ -44,5 +44,8 @@ bool RFI_DebugDeterministic(void);
 void RFI_NoteSprite(RF_SpriteDrawEntry *sde, int unitX, int unitY, bool fresh);
 void RFI_Reset(void); // keen456-decomp #76
 void RFI_Frame(void);
+// keen456-omnispeak-fork #103: widescreen presents outside RFI_Frame (see rf_interp.c)
+bool RFI_PresentWideStill(void);
+void RFI_WideSceneEnd(void);
 
 #endif

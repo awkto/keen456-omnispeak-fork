@@ -513,11 +513,13 @@ void CK_AnimateMapTeleporter(int tileX, int tileY)
 	VL_SetScrollCoords((rf_scrollXUnit & 0xef) >> 4, (rf_scrollYUnit & 0xff) >> 4);
 
 	// Set objects to be active if they're inside the screen
+	int viewX0, viewX1;
+	CK_ViewTilesX(&viewX0, &viewX1); // keen456-omnispeak-fork #103: the 320-px window in vanilla
 	for (CK_object *obj = ck_keenObj->next; obj != NULL; obj = obj->next)
 	{
 
 		if (obj->active || obj->type != 8 ||
-			obj->clipRects.tileX2 < (rf_scrollXUnit >> 8) - 1 || obj->clipRects.tileX1 > (rf_scrollXUnit >> 8) + (320 >> 4) + 1 || obj->clipRects.tileY2 < (rf_scrollYUnit >> 8) - 1 || obj->clipRects.tileY1 > (rf_scrollYUnit >> 8) + (208 >> 4) + 1)
+			obj->clipRects.tileX2 < viewX0 - 1 || obj->clipRects.tileX1 > viewX1 + 1 || obj->clipRects.tileY2 < (rf_scrollYUnit >> 8) - 1 || obj->clipRects.tileY1 > (rf_scrollYUnit >> 8) + (208 >> 4) + 1)
 			continue;
 
 		obj->visible = 1;

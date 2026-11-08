@@ -799,6 +799,7 @@ bool vl_isFullScreen;
 bool vl_isAspectCorrected;
 int vl_aspectMode;
 const char *vl_aspectStrings[] = {"auto", "4:3", "as-is", "16:10", "16:9", "fit", 0};
+int vl_displayGameW = VL_EGAVGA_GFX_WIDTH;
 bool vl_isIntegerScaled;
 bool vl_hasOverscanBorder;
 int vl_swapInterval;
@@ -1031,10 +1032,31 @@ int vl_renderRgn_h;
 int vl_integerWidth;
 int vl_integerHeight;
 
+/* #103: widescreen game width for an aspect num:den, 200 lines of 1.2-tall EGA pixels
+ * (so 4:3 is 320). A multiple of 4, so the extra width splits into even halves and the
+ * 2-px EGA scroll grid of the centre lines up with the whole view. */
+static int VL_WideGameW(int num, int den)
+{
+	int w = (int)((240.0 * num / den) / 4.0 + 0.5) * 4;
+	if (w < VL_EGAVGA_GFX_WIDTH) w = VL_EGAVGA_GFX_WIDTH;
+	if (w > VL_WIDE_MAX_W) w = VL_WIDE_MAX_W;
+	return w;
+}
+
+void VL_GameRectX(int gameW, int *x, int *w)
+{
+	if (gameW >= vl_displayGameW)
+		return;
+	int nw = (int)((int64_t)*w * gameW / vl_displayGameW);
+	*x += (*w - nw) / 2;
+	*w = nw;
+}
+
 void VL_CalculateRenderRegions(int realW, int realH)
 {
 	int aspNum = 0, aspDen = 1;
 	bool integer = vl_isIntegerScaled;
+	vl_displayGameW = VL_EGAVGA_GFX_WIDTH;
 	switch (vl_aspectMode)
 	{
 	case VL_Aspect_Auto:
@@ -1061,6 +1083,25 @@ void VL_CalculateRenderRegions(int realW, int realH)
 	default: /* fit */
 		break;
 	}
+#ifdef WITH_RF_INTERP
+	/* #103: real widescreen. The region keeps its aspect and shows a wider game frame
+	 * (16:10 = 384, 16:9 = 428 game pixels); Fit shows as much as the window's shape
+	 * allows (4:3 .. 560 wide), letterboxed beyond that, never stretched. Whole-number
+	 * scaling would break the region's aspect, so it is not applied in these modes. */
+	if (vl_aspectMode == VL_Aspect_16x10 || vl_aspectMode == VL_Aspect_16x9)
+	{
+		vl_displayGameW = VL_WideGameW(aspNum, aspDen);
+		integer = false;
+	}
+	else if (vl_aspectMode == VL_Aspect_Fit && realW > 0 && realH > 0)
+	{
+		vl_displayGameW = VL_WideGameW(realW, realH);
+		/* the region's aspect is the frame's: 1.2-tall pixels, 200 lines */
+		aspNum = vl_displayGameW * 5;
+		aspDen = 200 * 6;
+		integer = false;
+	}
+#endif
 	if (aspNum)
 	{
 		if (realW * aspDen > realH * aspNum) // Wider than the wanted ratio
@@ -1120,6 +1161,23 @@ void VL_CalculateRenderRegions(int realW, int realH)
 				VL_VGA_GFX_SCALED_TOPBORDER_HEIGHT + VL_VGA_GFX_SCALED_BOTTOMBORDER_HEIGHT);
 }
 
+/* #103: default window width for a scale: as wide as the aspect mode's region (16:10, 16:9),
+ * capped to the desktop, so a new window is not letterboxed. */
+int VL_DefaultWindowWidth(int scale, int desktopW)
+{
+	int w = VL_DEFAULT_WINDOW_WIDTH(scale);
+#ifdef WITH_RF_INTERP
+	if (vl_aspectMode == VL_Aspect_16x10 || vl_aspectMode == VL_Aspect_16x9)
+	{
+		int h = VL_DEFAULT_WINDOW_HEIGHT(scale);
+		w = (vl_aspectMode == VL_Aspect_16x9) ? h * 16 / 9 : h * 16 / 10;
+		if (desktopW > 0 && w > desktopW)
+			w = desktopW;
+	}
+#endif
+	return w;
+}
+
 int VL_CalculateDefaultWindowScale(int desktopW, int desktopH)
 {
 	int scale = 1;
@@ -1135,8 +1193,15 @@ int VL_CalculateDefaultWindowScale(int desktopW, int desktopH)
 	return scale;
 }
 
+#ifdef WITH_RF_INTERP
+void RFI_WideSceneEnd(void);
+#endif
+
 void VL_ClearScreen(int colour)
 {
+#ifdef WITH_RF_INTERP
+	RFI_WideSceneEnd(); /* #103: a full-screen text/menu screen replaces the game view */
+#endif
 	int screenWidth, screenHeight;
 	if (!vl_emuegavgaadapter.screen)
 		return;
@@ -1177,9 +1242,26 @@ void VL_SwapOnNextPresent()
 	vl_swapOnNextPresent = true;
 }
 
+#ifdef WITH_RF_INTERP
+bool RFI_PresentWideStill(void);
+void VL_FlipPageNoPresent(void);
+#endif
+
 void VL_Present()
 {
 	vl_lastFrameTime = SD_GetTimeCount();
+#ifdef WITH_RF_INTERP
+	/* #103: during widescreen play, whatever is drawn on the 320-wide screen (dialogs, the
+	 * status window, fades) is shown over the wide view instead of a pillarboxed frame. */
+	if (RFI_PresentWideStill())
+	{
+		/* the page flip the backend's present would have done (double-buffered sdl2gl) */
+		if (vl_swapOnNextPresent)
+			VL_FlipPageNoPresent();
+		vl_swapOnNextPresent = false;
+		return;
+	}
+#endif
 	vl_currentBackend->present(vl_emuegavgaadapter.screen, vl_scrollXpixels, vl_scrollYpixels, !vl_swapOnNextPresent);
 	vl_swapOnNextPresent = false;
 }

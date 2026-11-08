@@ -38,6 +38,7 @@ In demos (playback, recording, `/DUMPFILE`) `RFL_CalcTics` still runs, so
 | Camera smoothing on (`camera-smoothing`, opt-in; `pixel`/`subpixel` only) | The displayed camera D is snapped to the target (V=0) when the target moves more than `SNAP_UNITS` in one compose, on `RFI_Reset`, on the first frame, and when the fix or mode changes | `src/rf_interp.c` (`SmoothCamera`) |
 | Draw hook active (Enter-key status window, `rf_drawFunc`) | Interpolation is bypassed for those `RF_Refresh` calls: the vanilla frame is presented (the hook paints the screen surface, which the compositor never reads), then `RFI_Reset()` drops history so the next interpolated frame snaps. Without it the window pops in with no slide (keen456-decomp #77) | `src/id_rf.c` (`RF_Refresh`) |
 | Scorebox / demo sign (HUD sprite; `pixel`/`subpixel`) | Drawn at the displayed camera plus its fixed screen offset (`curU - rf_scrollU`), not at its own lerp, so it stays pinned when `camera-smoothing` makes the camera differ from the plain lerp (#77). The debug CSV has `scorebox_x_qpx,scorebox_y_qpx` | `src/rf_interp.c` (`Compose`) |
+| Widescreen view (#103) | The frame is `RF_ViewWidth()` game pixels wide; its left edge is `RF_WideViewLeft` of the displayed (lerped, quantised) camera, so the clamp at map edges and scroll blocks moves with the camera. The scorebox is drawn last at the wide view's corner, after the black fill beyond the band. Presents outside `RFI_Frame` (draw hook, dialogs, fades, smoothing off) use `RFI_PresentWideStill`: grid compose at alpha 1 plus the vanilla screen over the camera window | `src/rf_interp.c` (`Compose`, `RFI_PresentWideStill`), `src/id_rf.c` |
 | Demos and dumps | Game state is never touched; the vanilla clock is kept during demos, with `RFL_CalcTics` instead of the fixed 2-tic step | `src/rf_interp.c:507`, `src/rf_interp.c:511`, `src/id_rf.c:997` |
 
 If you add a rule, add a row here.
@@ -220,7 +221,7 @@ sleep after each fade present to simulate a blocking vsync.
 
 ## Renderers
 
-The compositor produces a 1280x800 ARGB frame. Each backend only has to show it:
+The compositor produces a 1280x800 ARGB frame (wider in widescreen, e.g. 1712x800 at 16:9; see FILTERS.md). Each backend only has to show it:
 
 - **`sdl2`, `sdl2sw`** (`id_vl_sdl2.c`): `VL_PresentARGB` uses an SDL streaming
   texture.

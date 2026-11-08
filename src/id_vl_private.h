@@ -101,6 +101,10 @@ extern int vl_integerHeight;
 
 // Calculates render regions taking the integer scaling into account.
 void VL_CalculateRenderRegions(int realW, int realH);
+/* #103: the part of a render rectangle (x, w) that a frame gameW game pixels wide fills:
+ * centred, same scale, so a 320-wide frame is pillarboxed in a widescreen region. */
+void VL_GameRectX(int gameW, int *x, int *w);
+int VL_DefaultWindowWidth(int scale, int desktopW);
 
 // Calculates a good default window size, given the desktop size.
 int VL_CalculateDefaultWindowScale(int desktopW, int desktopH);

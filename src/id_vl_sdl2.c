@@ -110,7 +110,7 @@ static void VL_SDL2_SetVideoMode(int mode)
 #endif
 		int scale = VL_CalculateDefaultWindowScale(desktopBounds.w, desktopBounds.h);
 		vl_sdl2_window = SDL_CreateWindow(VL_WINDOW_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-			VL_DEFAULT_WINDOW_WIDTH(scale), VL_DEFAULT_WINDOW_HEIGHT(scale),
+			VL_DefaultWindowWidth(scale, desktopBounds.w), VL_DEFAULT_WINDOW_HEIGHT(scale),
 			SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE | (vl_isFullScreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
 
 		SDL_SetWindowMinimumSize(vl_sdl2_window, VL_VGA_GFX_SCALED_WIDTH_PLUS_BORDER / VL_VGA_GFX_WIDTH_SCALEFACTOR, VL_VGA_GFX_SCALED_HEIGHT_PLUS_BORDER / VL_VGA_GFX_HEIGHT_SCALEFACTOR);
@@ -396,6 +396,7 @@ static void VL_SDL2_Present(void *surface, int scrlX, int scrlY, bool singleBuff
 	SDL_Rect srcr = {(Sint16)scrlX, (Sint16)scrlY, VL_EGAVGA_GFX_WIDTH, VL_EGAVGA_GFX_HEIGHT};
 	SDL_Rect renderRect = {(Sint16)vl_renderRgn_x, (Sint16)vl_renderRgn_y, vl_renderRgn_w, vl_renderRgn_h};
 	SDL_Rect fullRect = {(Sint16)vl_fullRgn_x, (Sint16)vl_fullRgn_y, vl_fullRgn_w, vl_fullRgn_h};
+	VL_GameRectX(VL_EGAVGA_GFX_WIDTH, &renderRect.x, &renderRect.w); /* #103: pillarbox in a wide region */
 
 	SDL_BlitSurface(surf, &srcr, vl_sdl2_stagingSurface, 0);
 #ifdef WITH_RF_INTERP
@@ -430,7 +431,12 @@ static void VL_SDL2_Present(void *surface, int scrlX, int scrlY, bool singleBuff
 		SDL_RenderClear(vl_sdl2_renderer);
 
 		SDL_RenderSetViewport(vl_sdl2_renderer, 0);
-		SDL_RenderCopy(vl_sdl2_renderer, vl_sdl2_scaledTarget, 0, &fullRect);
+		/* #103: in a widescreen region only the pillarboxed part (the 320 frame and its
+		 * border) is copied; the bars stay black */
+		SDL_Rect srcPart = {0, 0, vl_integerWidth, vl_integerHeight};
+		VL_GameRectX(VL_EGAVGA_GFX_WIDTH, &srcPart.x, &srcPart.w);
+		VL_GameRectX(VL_EGAVGA_GFX_WIDTH, &fullRect.x, &fullRect.w);
+		SDL_RenderCopy(vl_sdl2_renderer, vl_sdl2_scaledTarget, &srcPart, &fullRect);
 	}
 	else
 	{
@@ -440,6 +446,17 @@ static void VL_SDL2_Present(void *surface, int scrlX, int scrlY, bool singleBuff
 		SDL_RenderClear(vl_sdl2_renderer);
 
 		SDL_RenderSetViewport(vl_sdl2_renderer, 0);
+		{
+			/* #103: black bars, the border only round the pillarboxed frame; renderRect is
+			 * relative to the viewport, so rebuild it for the narrowed one */
+			int fw = fullRect.w;
+			VL_GameRectX(VL_EGAVGA_GFX_WIDTH, &fullRect.x, &fullRect.w);
+			if (fullRect.w != fw && fw > 0)
+			{
+				renderRect.x = (int)((int64_t)vl_renderRgn_x * fullRect.w / fw);
+				renderRect.w = (int)((int64_t)vl_renderRgn_w * fullRect.w / fw);
+			}
+		}
 		SDL_RenderSetViewport(vl_sdl2_renderer, &fullRect);
 		SDL_SetRenderDrawColor(vl_sdl2_renderer,
 			VL_EGARGBColorTable[vl_emuegavgaadapter.bordercolor][0],
@@ -580,12 +597,14 @@ void VL_PresentARGB(const uint32_t *argb, int w, int h, const char *title)
 		(int)((int64_t)vl_renderRgn_w * vl_fullRgn_w / iw),
 		(int)((int64_t)vl_renderRgn_h * vl_fullRgn_h / ih)};
 	(void)renderRect;
+	VL_GameRectX(h > 0 ? w * VL_EGAVGA_GFX_HEIGHT / h : VL_EGAVGA_GFX_WIDTH, &dst.x, &dst.w); /* #103 */
 	const Uint8 *bc = VL_EGARGBColorTable[vl_emuegavgaadapter.bordercolor];
 	SDL_SetRenderTarget(vl_sdl2_renderer, 0);
 	SDL_RenderSetViewport(vl_sdl2_renderer, 0);
 	SDL_SetRenderDrawColor(vl_sdl2_renderer, 0, 0, 0, 255);
 	SDL_RenderClear(vl_sdl2_renderer);
 	SDL_SetRenderDrawColor(vl_sdl2_renderer, bc[0], bc[1], bc[2], 255);
+	VL_GameRectX(h > 0 ? w * VL_EGAVGA_GFX_HEIGHT / h : VL_EGAVGA_GFX_WIDTH, &fullRect.x, &fullRect.w); /* #103 */
 	SDL_RenderFillRect(vl_sdl2_renderer, &fullRect);
 	SDL_RenderCopy(vl_sdl2_renderer, tex, 0, &dst);
 	double pc1 = VL_DebugNowS();

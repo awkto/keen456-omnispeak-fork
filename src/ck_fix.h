@@ -51,6 +51,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	CK_FIX_ENTRY(TimeBasedFades, "time-based-fades", false, false, true, "Palette fades take the vanilla 70 Hz duration whatever the refresh rate (keen456-decomp #78)") \
 	CK_FIX_ENTRY(CameraSmoothing, "camera-smoothing", false, false, false, "Opt-in: velocity-smooth the displayed camera in pixel/subpixel interpolation (presentation only, keen456-decomp #86)") \
 	CK_FIX_ENTRY(ModernControls, "modern-controls", true, false, false, "Opt-in: keyboard Alt is a press+release pogo toggle that also jumps (super-bounce), see id_in.c (keen456-decomp #100)") \
+	CK_FIX_ENTRY(Widescreen, "widescreen", true, false, true, "Widescreen aspect modes (16:10, 16:9, fit) show a wider view, and actors wake and act across all of it (keen456-omnispeak-fork #103)") \
 	CK_FIX_ENTRY(Example, "example", false, false, true, "Example entry: logs one line at startup. Copy it to add a fix.")
 
 typedef enum CK_FixId

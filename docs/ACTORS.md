@@ -185,6 +185,16 @@ K5_DEF.H:61; computed in `CenterActor`/`ScrollScreen`, CK_PLAY.C:1397-1415, :170
 || screenfaded || loadedgame`, :2234), and its think is skipped. The RNG is called once per
 out-of-range object per frame. Deactivated objects keep their state and `ticcount`.
 
+**Fork: widescreen (#103).** In Omnispeak the "screen" for these tests is `CK_ViewTilesX`
+(ck_play.c). Vanilla it is exactly `[scroll tile, scroll tile + 20]`. With the `widescreen` fix
+(sim; enhanced profile; off in demos and dumps) and a widescreen display it is the visible part
+of the wider view (`RF_WideViewLeft`, clamped to scroll blocks). It feeds: the wake test (±1
+tile), the inactivate box (± `CK_activeLimit`), the world-map warp wake-up (ck_map.c),
+`CK_ObjectVisible` (K4 bounder sound, K5 Shikadi pole zap, K6 Nospike charge give-up, dead Keen
+leaving the screen ends the death) and Keen's shot despawn/stun-off-screen (`CK_ShotThink`). The
+camera follow (144/192 px), scroll limits and the level-exit test are not screen-width dependent
+in the sim and stay vanilla.
+
 ### 3.2 `StateMachine` and `DoActor` (CK_STATE.C:1029-1229). Omnispeak: `CK_RunAction`/`CK_ActionThink`, ck_play.c:500-685
 
 `StateMachine` (CK_STATE.C:1146):
