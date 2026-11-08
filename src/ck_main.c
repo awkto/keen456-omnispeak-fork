@@ -521,6 +521,8 @@ extern bool ck6_creatureQuestionDone;
 
 const char *ck_episodeFile = NULL;
 
+static int ck_pogoHoldCli = -1; // /POGOHOLD, overrides the config
+
 int main(int argc, char *argv[])
 {
 	// Send the cmd-line args to the User Manager.
@@ -695,6 +697,23 @@ int main(int argc, char *argv[])
 				QuitF("Unknown fix \"%s\"", argv[i + 1]);
 			++i;
 		}
+		else if (!CK_Cross_strcasecmp(argv[i], "/MODERNCONTROLS"))
+		{
+			// Alt = press+release pogo toggle that also jumps (keen456-decomp #100)
+			CK_Fix_SetOverride("modern-controls", true);
+		}
+		else if (!CK_Cross_strcasecmp(argv[i], "/NOMODERNCONTROLS"))
+		{
+			CK_Fix_SetOverride("modern-controls", false);
+		}
+		else if (!CK_Cross_strcasecmp(argv[i], "/POGOHOLD"))
+		{
+			// Modern pogo auto-retract hold time in ms; 0 or OFF disables it.
+			if (i + 1 >= argc)
+				QuitF("%s needs a time in ms (or OFF)", argv[i]);
+			++i;
+			ck_pogoHoldCli = CK_Cross_strcasecmp(argv[i], "OFF") ? atoi(argv[i]) : 0;
+		}
 		else if (!CK_Cross_strcasecmp(argv[i], "/FORCEFIXES"))
 		{
 			// Testing only: lets fixes that change the game state run during demos and dumps.
@@ -805,6 +824,7 @@ int main(int argc, char *argv[])
 #endif
 
 	CK_Fix_Startup();
+	in_modernPogoHoldMs = (ck_pogoHoldCli >= 0) ? ck_pogoHoldCli : CFG_GetConfigInt("modernPogoHold", 180);
 
 #ifdef CK_ENABLE_PLAYLOOP_DUMPER
 	// Record the active fixes next to the dump, keeping the dump itself DOS-comparable.
