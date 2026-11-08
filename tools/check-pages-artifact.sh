@@ -20,6 +20,13 @@ for ep in 5 6; do
 done
 # 3. content: nothing else may be big enough to hold a game file, and no *.data besides k4 may exceed the tables
 for f in "$D"/k5*.data "$D"/k6*.data; do [ -f "$f" ] && [ "$(stat -c %s "$f")" -gt 200000 ] && { echo "FAIL: $f suspiciously large"; fail=1; }; done
+# 3b. the GPL source tarball must not drag in game data or build trees (a CI workspace once put 500 MB of emsdk cache in it)
+if [ -f "$D/omnispeak-src.tar.gz" ]; then
+  [ "$(stat -c %s "$D/omnispeak-src.tar.gz")" -lt 5000000 ] || { echo "FAIL: omnispeak-src.tar.gz is huge"; fail=1; }
+  if tar tzf "$D/omnispeak-src.tar.gz" | grep -iE '(EGAGRAPH|GAMEMAPS|AUDIO)\.CK[456]$|\.exe$'; then echo "FAIL: game files in the source tarball"; fail=1; fi
+fi
+# 3c. total size sanity (Keen 4 shareware + engine is ~8 MB)
+[ "$(du -sb "$D" | cut -f1)" -lt 30000000 ] || { echo "FAIL: artifact larger than 30 MB"; fail=1; }
 # 4. the episodes manifest must say tables-only
 grep -q '"5": "tables"' "$D/episodes.json" && grep -q '"6": "tables"' "$D/episodes.json" || { echo "FAIL: episodes.json does not mark 5/6 as tables"; fail=1; }
 [ "$fail" = 0 ] && echo "OK: no Keen 5/6 game data in $D"

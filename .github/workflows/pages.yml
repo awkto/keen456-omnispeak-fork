@@ -30,12 +30,12 @@ jobs:
 
     - name: Fetch Keen 4 v1.4 shareware (freely redistributable)
       run: |
-        export KEEN_DATA="$PWD/keen-data"
+        export KEEN_DATA="$RUNNER_TEMP/keen-data"
         tools/fetch-k4-shareware.sh
 
     - name: Build (Keen 4 bundled; Keen 5/6 = engine tables only)
       run: |
-        KEEN_DATA="$PWD/keen-data" EPISODES="4 5 6" TABLES_ONLY="5 6" tools/build-wasm.sh
+        KEEN_DATA="$RUNNER_TEMP/keen-data" EPISODES="4 5 6" TABLES_ONLY="5 6" tools/build-wasm.sh
         touch dist/.nojekyll
 
     - name: Guard - no Keen 5/6 game data in the artifact
