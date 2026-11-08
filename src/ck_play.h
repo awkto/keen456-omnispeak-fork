@@ -36,6 +36,7 @@ extern int ck_activeX0Tile;
 extern int ck_activeY0Tile;
 extern int ck_activeX1Tile;
 extern int ck_activeY1Tile;
+void CK_ViewTilesX(int *x0, int *x1); // keen456-omnispeak-fork #103
 
 extern bool ck_scrollDisabled;
 

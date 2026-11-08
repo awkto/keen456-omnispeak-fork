@@ -10,6 +10,8 @@
 #include "id_vl_filter.h"
 
 #define GAME_W 320
+/* #103: frames may be wider than 320 game pixels (widescreen); the game width of a w x h frame */
+#define GAME_W_OF(w, h) ((w) * GAME_H / (h))
 #define GAME_H 200
 
 const char *vlf_filterStrings[] = {"off", "scanlines", "crt", "curved", "rgb", "soft", "amber", "green", 0};
@@ -110,7 +112,7 @@ static void BuildLut(VLF_Filter f, int w, int h)
 			}
 			if (d->mask > 0)
 			{
-				int ph = (int)floorf(u * GAME_W) % 3;
+				int ph = (int)floorf(u * GAME_W_OF(w, h)) % 3;
 				if (ph < 0) ph += 3;
 				for (int c = 0; c < 3; ++c)
 					if (c != ph)
@@ -248,8 +250,7 @@ static const uint32_t *ApplyInner(const uint32_t *src, int w, int h, int *outW, 
 const uint32_t *VLF_Apply(const uint32_t *src, int w, int h, int *outW, int *outH)
 {
 	const uint32_t *r = ApplyInner(src, w, h, outW, outH);
-	if (VLF_Active())
-		DebugShot(r, *outW, *outH);
+	DebugShot(r, *outW, *outH); /* test hook; also unfiltered, for the widescreen shots (#103) */
 	return r;
 }
 
@@ -259,7 +260,7 @@ static const uint32_t *ApplyInner(const uint32_t *src, int w, int h, int *outW, 
 	if (!VLF_Active())
 		return src;
 	int ow = w, oh = h;
-	if (w == GAME_W && h == GAME_H)
+	if (h == GAME_H && w >= GAME_W && w <= 4 * GAME_W) /* a 1x frame (320, or wider): expand 4x */
 		ow = w * 4, oh = h * 4;
 	EnsureBuffers(ow, oh);
 	*outW = ow; *outH = oh;
@@ -285,7 +286,7 @@ static const uint32_t *ApplyInner(const uint32_t *src, int w, int h, int *outW, 
 	{
 		/* Blur at half resolution: 2x2 average, then a box blur; the display's own linear
 		 * scaling (or the multiply pass below) brings it back up. 4x the pixels would cost
-		 * ~20 ms in WASM. sigma is in game pixels, 1 game pixel = ow/320/2 half-res pixels. */
+		 * ~20 ms in WASM. sigma is in game pixels, 1 game pixel = ow/gameW/2 half-res pixels. */
 		int hw = ow / 2, hh = oh / 2;
 		const uint32_t M = 0x00FF00FFu;
 		for (int y = 0; y < hh; ++y)
@@ -300,7 +301,7 @@ static const uint32_t *ApplyInner(const uint32_t *src, int w, int h, int *outW, 
 				o[x] = ((rb >> 2) & M) | (((ag >> 2) & M) << 8);
 			}
 		}
-		float bw = sigma * (ow / (float)GAME_W / 2.0f) * 3.4641016f; /* box width, same variance */
+		float bw = sigma * (ow / (float)GAME_W_OF(ow, oh) / 2.0f) * 3.4641016f; /* box width, same variance */
 		if (bw > 1.05f)
 		{
 			BoxBlur(bufTmp, bufBlur, bufExp /* free once downsampled */, hw, hh, bw);

@@ -1491,6 +1491,83 @@ void RFL_UpdateTiles()
 #endif
 }
 
+/* keen456-omnispeak-fork #103: widescreen.
+ *
+ * The camera (rf_scrollXUnit) and this refresh manager stay exactly vanilla: a 320-px port.
+ * The wider view is composed by rf_interp.c around it. RF_ViewWidth() is how wide the view is
+ * (320 unless the 'widescreen' fix is active during play and the display is wide), and
+ * RF_WideViewLeft() places it: centred on the 320-px camera window, but never past a scroll
+ * block (the map's 2-tile border included), so it shows nothing vanilla would not scroll to.
+ * The band [bandL, bandR) between the nearest blocks outside the camera window is what may be
+ * shown; when it is narrower than the view, the view is centred on it and the rest is black.
+ * Both are pure functions of the camera and the map, so the sim (actor wake range, see
+ * CK_ViewTilesX) and the presentation agree on what is on screen. */
+bool rf_widePlay;
+
+int RF_ViewWidth(void)
+{
+#ifdef WITH_RF_INTERP
+	if (rf_widePlay && vl_displayGameW > 320 && CK_FIX(Widescreen))
+		return vl_displayGameW;
+#endif
+	return 320;
+}
+
+int RF_WideViewLeft(int camXUnit, int viewWPx, int *bandLUnit, int *bandRUnit)
+{
+	int camR = camXUnit + RF_PixelToUnit(320);
+	int bandL = 0, bandR = RF_TileToUnit(rf_mapWidthTiles);
+	for (int i = 0; i < rf_numHorzScrollBlocks; ++i)
+	{
+		int b = RF_TileToUnit(rf_horzScrollBlocks[i]);
+		if (b + RF_TileToUnit(1) <= camXUnit && b + RF_TileToUnit(1) > bandL)
+			bandL = b + RF_TileToUnit(1);
+		if (b >= camR && b < bandR)
+			bandR = b;
+	}
+	int w = RF_PixelToUnit(viewWPx), left;
+	if (bandR - bandL >= w)
+	{
+		left = camXUnit - (w - RF_PixelToUnit(320)) / 2;
+		if (left < bandL) left = bandL;
+		if (left > bandR - w) left = bandR - w;
+	}
+	else
+		left = (bandL + bandR - w) / 2;
+	if (bandLUnit) *bandLUnit = bandL;
+	if (bandRUnit) *bandRUnit = bandR;
+	return left;
+}
+
+/* #103, presentation only: the tile to draw at (tileX, tileY) of a plane (0 back, 1 fore). RF
+ * writes animated tiles into the map plane only while they are inside its 21x14 port, so a
+ * wider view would show frozen animations at its sides; take the frame from the animation's
+ * timer instead (the info plane points at it, see RF_MarkTileGraphics). Inside the port the
+ * map plane already holds that frame, so the result is the same. */
+int RF_DisplayTileAt(int tileX, int tileY, int plane)
+{
+	int tile = CA_TileAtPos(tileX, tileY, plane);
+	bool anim = plane ? (TI_ForeAnimTile(tile) && TI_ForeAnimTime(tile)) : (TI_BackAnimTile(tile) && TI_BackAnimTime(tile));
+	if (!anim)
+		return tile;
+	int idx = RFL_ConvertAnimTileTimer16BitOffsetToIndex(CA_TileAtPos(tileX, tileY, 2));
+	if (idx < 0 || idx >= rf_numAnimTileTimers)
+		return tile;
+	int cur = rf_animTileTimers[idx].tileNumber & 0x7fff;
+	/* the info plane may hold something else (a spawn code): only trust a timer of this chain */
+	int t = tile;
+	for (int i = 0; i < RF_MAX_ANIM_LOOP; ++i)
+	{
+		if (t == cur)
+			return cur;
+		int step = plane ? TI_ForeAnimTile(t) : TI_BackAnimTile(t);
+		if (!step)
+			break;
+		t += step;
+	}
+	return tile;
+}
+
 void RF_Refresh()
 {
 	RFL_AnimateTiles();

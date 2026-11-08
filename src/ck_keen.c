@@ -1961,13 +1961,15 @@ void CK_ShotHit(CK_object *obj)
 void CK_ShotThink(CK_object *shot)
 {
 	// Stun things which are offscreen.
-	if ((shot->clipRects.tileX2 < RF_UnitToTile(rf_scrollXUnit)) ||
+	int viewX0, viewX1;
+	CK_ViewTilesX(&viewX0, &viewX1); // keen456-omnispeak-fork #103: the 320-px window in vanilla
+	if ((shot->clipRects.tileX2 < viewX0) ||
 		(shot->clipRects.tileY2 < RF_UnitToTile(rf_scrollYUnit)) ||
-		(shot->clipRects.tileX1 > RF_UnitToTile(rf_scrollXUnit) + RF_PixelToTile(320)) ||
+		(shot->clipRects.tileX1 > viewX1) ||
 		(shot->clipRects.tileY1 > RF_UnitToTile(rf_scrollYUnit) + RF_PixelToTile(208)))
 	{
-		if ((shot->clipRects.tileX2 + 10 < RF_UnitToTile(rf_scrollXUnit)) ||
-			(shot->clipRects.tileX1 - 10 > RF_UnitToTile(rf_scrollXUnit) + RF_PixelToTile(320)) ||
+		if ((shot->clipRects.tileX2 + 10 < viewX0) ||
+			(shot->clipRects.tileX1 - 10 > viewX1) ||
 			(shot->clipRects.tileY2 + 6 < RF_UnitToTile(rf_scrollYUnit)) ||
 			(shot->clipRects.tileY1 - 6 > RF_UnitToTile(rf_scrollYUnit) + RF_PixelToTile(208)))
 		{

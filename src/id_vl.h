@@ -30,10 +30,16 @@ extern bool vl_isFullScreen;
 extern bool vl_isAspectCorrected;
 /* Aspect ratio of the picture (keen456-omnispeak-fork #101). Auto keeps the old behaviour:
  * 4:3 when vl_isAspectCorrected, else stretch to the window. As-is is square pixels (16:10)
- * at whole-number scale; Fit stretches to the window. */
+ * at whole-number scale. 16:10, 16:9 and Fit are widescreen (#103): the render region is
+ * vl_displayGameW game pixels wide (Fit: as wide as the window allows), and 320-wide frames
+ * (menus, text screens, vanilla play) are pillarboxed in it, never stretched. */
 typedef enum { VL_Aspect_Auto, VL_Aspect_4x3, VL_Aspect_AsIs, VL_Aspect_16x10, VL_Aspect_16x9, VL_Aspect_Fit, VL_Aspect_Count } VL_AspectMode;
 extern int vl_aspectMode;
 extern const char *vl_aspectStrings[];
+/* #103: game pixels (at 200 lines, EGA pixels 1.2 tall) across the render region: 320, or
+ * more in the widescreen aspect modes. Only rf_interp.c composes frames that wide. */
+#define VL_WIDE_MAX_W 560
+extern int vl_displayGameW;
 extern bool vl_isIntegerScaled;
 extern bool vl_hasOverscanBorder;
 extern int vl_swapInterval;

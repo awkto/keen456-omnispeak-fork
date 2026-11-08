@@ -23,6 +23,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "id_fs.h"
 #include "id_in.h"
 #include "id_rf.h"
+#ifdef WITH_RF_INTERP
+#include "rf_interp.h"
+#endif
 #include "id_sd.h"
 #include "id_us.h"
 #include "id_vl.h"
@@ -62,6 +65,52 @@ int ck_activeX0Tile;
 int ck_activeY0Tile;
 int ck_activeX1Tile;
 int ck_activeY1Tile;
+
+/* keen456-omnispeak-fork #103: menus and help screens opened from the play loop are 320 wide
+ * (pillarboxed), not drawn over the frozen wide view. */
+static bool ck_wideMenuWasPlay;
+static void CK_WideMenuBegin(void)
+{
+	ck_wideMenuWasPlay = rf_widePlay;
+	rf_widePlay = false;
+#ifdef WITH_RF_INTERP
+	RFI_WideSceneEnd();
+#endif
+}
+static void CK_WideMenuEnd(void)
+{
+	rf_widePlay = ck_wideMenuWasPlay;
+}
+
+/* keen456-omnispeak-fork #103: the horizontal tile span the sim treats as "on screen" (actor
+ * wake-up and sleep, CK_ObjectVisible, Keen's shots). Vanilla: the 320-px camera window,
+ * [scroll tile, scroll tile + 20]. With the 'widescreen' fix active (never in demos or dumps)
+ * and a wide display: the part of the wider view that shows the map, see RF_WideViewLeft. */
+void CK_ViewTilesX(int *x0, int *x1)
+{
+	int w = RF_ViewWidth();
+	if (w == 320)
+	{
+		*x0 = RF_UnitToTile(rf_scrollXUnit);
+		*x1 = RF_UnitToTile(rf_scrollXUnit) + RF_PixelToTile(320);
+		return;
+	}
+	int bandL, bandR;
+	int left = RF_WideViewLeft(rf_scrollXUnit, w, &bandL, &bandR);
+	int right = left + RF_PixelToUnit(w);
+	*x0 = RF_UnitToTile(CK_Cross_max(left, bandL));
+	*x1 = RF_UnitToTile(CK_Cross_min(right, bandR));
+}
+
+static void CK_UpdateActiveLimits(void)
+{
+	int x0, x1;
+	CK_ViewTilesX(&x0, &x1);
+	ck_activeX0Tile = CK_Cross_max(x0 - CK_INT(CK_activeLimit, DEFAULT_ACTIVE_LIMIT), 0);
+	ck_activeX1Tile = CK_Cross_max(x1 + CK_INT(CK_activeLimit, DEFAULT_ACTIVE_LIMIT), 0);
+	ck_activeY0Tile = CK_Cross_max(RF_UnitToTile(rf_scrollYUnit) - CK_INT(CK_activeLimit, DEFAULT_ACTIVE_LIMIT), 0);
+	ck_activeY1Tile = CK_Cross_max(RF_UnitToTile(rf_scrollYUnit) + RF_PixelToTile(208) + CK_INT(CK_activeLimit, DEFAULT_ACTIVE_LIMIT), 0);
+}
 
 void CK_KeenCheckSpecialTileInfo(CK_object *obj);
 
@@ -1160,7 +1209,9 @@ void CK_CheckKeys()
 	if ((ck_currentEpisode->ep != EP_CK6) && (IN_GetLastScan() == IN_SC_F1))
 	{
 		StopMusic();
+		CK_WideMenuBegin(); // keen456-omnispeak-fork #103
 		HelpScreens();
+		CK_WideMenuEnd();
 		StartMusic(ck_gameState.currentLevel);
 
 		// Force scorebox redraw if it's enabled
@@ -1227,7 +1278,9 @@ void CK_CheckKeys()
 
 			VL_FixRefreshBuffer();
 			StopMusic();
+			CK_WideMenuBegin(); // keen456-omnispeak-fork #103
 			US_RunCards();
+			CK_WideMenuEnd();
 
 			// RF_Reset();
 			StartMusic(ck_gameState.currentLevel);
@@ -1974,10 +2027,7 @@ void CK_CentreCamera(CK_object *obj)
 		RF_Reposition(screenX, screenY);
 
 	//TODO: This is 4 in Andy's disasm.
-	ck_activeX0Tile = CK_Cross_max(RF_UnitToTile(rf_scrollXUnit) - CK_INT(CK_activeLimit, DEFAULT_ACTIVE_LIMIT), 0);
-	ck_activeX1Tile = CK_Cross_max(RF_UnitToTile(rf_scrollXUnit) + RF_PixelToTile(320) + CK_INT(CK_activeLimit, DEFAULT_ACTIVE_LIMIT), 0);
-	ck_activeY0Tile = CK_Cross_max(RF_UnitToTile(rf_scrollYUnit) - CK_INT(CK_activeLimit, DEFAULT_ACTIVE_LIMIT), 0);
-	ck_activeY1Tile = CK_Cross_max(RF_UnitToTile(rf_scrollYUnit) + RF_PixelToTile(208) + CK_INT(CK_activeLimit, DEFAULT_ACTIVE_LIMIT), 0);
+	CK_UpdateActiveLimits(); // keen456-omnispeak-fork #103
 }
 
 /*
@@ -2030,10 +2080,7 @@ void CK_MapCamera(CK_object *keen)
 		 */
 
 		//TODO: This is 4 in Andy's disasm.
-		ck_activeX0Tile = CK_Cross_max(RF_UnitToTile(rf_scrollXUnit) - CK_INT(CK_activeLimit, DEFAULT_ACTIVE_LIMIT), 0);
-		ck_activeX1Tile = CK_Cross_max(RF_UnitToTile(rf_scrollXUnit) + RF_PixelToTile(320) + CK_INT(CK_activeLimit, DEFAULT_ACTIVE_LIMIT), 0);
-		ck_activeY0Tile = CK_Cross_max(RF_UnitToTile(rf_scrollYUnit) - CK_INT(CK_activeLimit, DEFAULT_ACTIVE_LIMIT), 0);
-		ck_activeY1Tile = CK_Cross_max(RF_UnitToTile(rf_scrollYUnit) + RF_PixelToTile(208) + CK_INT(CK_activeLimit, DEFAULT_ACTIVE_LIMIT), 0);
+		CK_UpdateActiveLimits(); // keen456-omnispeak-fork #103
 	}
 }
 
@@ -2206,10 +2253,7 @@ void CK_NormalCamera(CK_object *obj)
 		RF_SmoothScroll(deltaX, deltaY);
 
 		// Update the rectangle of active objects
-		ck_activeX0Tile = CK_Cross_max(RF_UnitToTile(rf_scrollXUnit) - CK_INT(CK_activeLimit, DEFAULT_ACTIVE_LIMIT), 0);
-		ck_activeX1Tile = CK_Cross_max(RF_UnitToTile(rf_scrollXUnit) + RF_PixelToTile(320) + CK_INT(CK_activeLimit, DEFAULT_ACTIVE_LIMIT), 0);
-		ck_activeY0Tile = CK_Cross_max(RF_UnitToTile(rf_scrollYUnit) - CK_INT(CK_activeLimit, DEFAULT_ACTIVE_LIMIT), 0);
-		ck_activeY1Tile = CK_Cross_max(RF_UnitToTile(rf_scrollYUnit) + RF_PixelToTile(208) + CK_INT(CK_activeLimit, DEFAULT_ACTIVE_LIMIT), 0);
+		CK_UpdateActiveLimits(); // keen456-omnispeak-fork #103
 	}
 }
 
@@ -2224,6 +2268,7 @@ void CK_PlayLoop()
 	ck_scrollDisabled = false;
 	ck_keenState.jumpWasPressed = ck_keenState.pogoWasPressed = ck_keenState.shootWasPressed = false;
 	game_in_progress = 1;
+	rf_widePlay = true; // keen456-omnispeak-fork #103
 	// If this is nonzero, the level will quit immediately.
 	ck_gameState.levelState = LS_Playing;
 
@@ -2248,12 +2293,14 @@ void CK_PlayLoop()
 		CK_HandleInput();
 
 		// Set, unset active objects.
+		int wakeX0, wakeX1;
+		CK_ViewTilesX(&wakeX0, &wakeX1); // keen456-omnispeak-fork #103: the 320-px window in vanilla
 		for (CK_object *currentObj = ck_keenObj; currentObj; currentObj = currentObj->next)
 		{
 
 			if (!currentObj->active &&
-				(currentObj->clipRects.tileX2 >= RF_UnitToTile(rf_scrollXUnit) - 1) &&
-				(currentObj->clipRects.tileX1 <= RF_UnitToTile(rf_scrollXUnit) + RF_PixelToTile(320) + 1) &&
+				(currentObj->clipRects.tileX2 >= wakeX0 - 1) &&
+				(currentObj->clipRects.tileX1 <= wakeX1 + 1) &&
 				(currentObj->clipRects.tileY1 <= RF_UnitToTile(rf_scrollYUnit) + RF_PixelToTile(208) + 1) &&
 				(currentObj->clipRects.tileY2 >= RF_UnitToTile(rf_scrollYUnit) - 1))
 			{
@@ -2474,5 +2521,6 @@ void CK_PlayLoop()
 		}
 	}
 	game_in_progress = 0;
+	rf_widePlay = false;
 	StopMusic();
 }

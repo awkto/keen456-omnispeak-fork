@@ -227,7 +227,7 @@ static void VL_SDL2GL_SetVideoMode(int mode)
 #endif
 		int scale = VL_CalculateDefaultWindowScale(desktopBounds.w, desktopBounds.h);
 		vl_sdl2gl_window = SDL_CreateWindow(VL_WINDOW_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-			VL_DEFAULT_WINDOW_WIDTH(scale), VL_DEFAULT_WINDOW_HEIGHT(scale),
+			VL_DefaultWindowWidth(scale, desktopBounds.w), VL_DEFAULT_WINDOW_HEIGHT(scale),
 			SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | (vl_isFullScreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
 		vl_sdl2gl_context = SDL_GL_CreateContext(vl_sdl2gl_window);
 		vl_sdl2gl_screenWidth = VL_EGAVGA_GFX_WIDTH;
@@ -660,7 +660,12 @@ static void VL_SDL2GL_Present(void *surface, int scrlX, int scrlY, bool singleBu
 	}
 
 	id_glClear(GL_COLOR_BUFFER_BIT);
-	id_glViewport(vl_renderRgn_x, vl_renderRgn_y, vl_renderRgn_w, vl_renderRgn_h);
+	{
+		/* #103: the 320-wide screen is pillarboxed in a widescreen region */
+		int vx = vl_renderRgn_x, vw = vl_renderRgn_w;
+		VL_GameRectX(VL_EGAVGA_GFX_WIDTH, &vx, &vw);
+		id_glViewport(vx, vl_renderRgn_y, vw, vl_renderRgn_h);
+	}
 
 	VL_SDL2GL_Surface *surf = (VL_SDL2GL_Surface *)surface;
 	id_glBindTexture(GL_TEXTURE_2D, surf->textureHandle);
@@ -712,7 +717,13 @@ static void VL_SDL2GL_Present(void *surface, int scrlX, int scrlY, bool singleBu
 		ownFrame = true;
 	}
 	if (vl_sdl2gl_argbFrame)
+	{
+		/* #103: a wide composed frame fills the region, a 320-wide one is pillarboxed */
+		int vx = vl_renderRgn_x, vw = vl_renderRgn_w;
+		VL_GameRectX(vl_sdl2gl_argbH > 0 ? vl_sdl2gl_argbW * VL_EGAVGA_GFX_HEIGHT / vl_sdl2gl_argbH : VL_EGAVGA_GFX_WIDTH, &vx, &vw);
+		id_glViewport(vx, vl_renderRgn_y, vw, vl_renderRgn_h);
 		VL_SDL2GL_DrawARGBFrame();
+	}
 	if (ownFrame)
 		vl_sdl2gl_argbFrame = NULL;
 #endif

@@ -83,9 +83,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define S 4 /* output scale: sub-pixel quantum is 1/S px = 16/S units */
 #define RF_NUM_SPRITE_Z_LAYERS 4
-#define OUT_W (320 * S)
+/* #103: frames are viewW game pixels wide (320, or wider in widescreen); buffers fit the widest */
+#define OUT_MAX_W (VL_WIDE_MAX_W * S)
 #define OUT_H (200 * S)
-#define LAYER_TW 23
+#define LAYER_TW (VL_WIDE_MAX_W / 16 + 3)
 #define LAYER_TH 16
 #define LAYER_W (LAYER_TW * 16)
 #define LAYER_H (LAYER_TH * 16)
@@ -101,6 +102,7 @@ void VL_PresentARGB(const uint32_t *argb, int w, int h, const char *title);
 void VL_FlipPageNoPresent(void);
 #ifdef __EMSCRIPTEN__
 void VL_WaitPresentSlot(void);
+double VL_WaitRAF(void);
 #endif
 /* filled in by the renderer's VL_PresentARGB where it can (id_vl_sdl2.c), for the present log */
 double vl_presentWorkS, vl_presentWaitS, vl_presentRafMs;
@@ -129,9 +131,18 @@ static double smoothD[2], smoothV[2], smoothT[2], smoothTime;
 static bool havePrev;
 static const CK_action *lastKeenAct; /* #76: Keen's action at the previous sim frame */
 static uint8_t layerBack[LAYER_W * LAYER_H], layerFore[LAYER_W * LAYER_H];
-static uint8_t out8[OUT_W * OUT_H];
-static uint32_t out32[OUT_W * OUT_H];
-static uint8_t out24[OUT_W * OUT_H * 3];
+static uint8_t out8[OUT_MAX_W * OUT_H];
+static uint32_t out32[OUT_MAX_W * OUT_H];
+static uint8_t out24[OUT_MAX_W * OUT_H * 3];
+/* #103: width of the frame being composed (OUT_W) and where the vanilla 320-px camera window
+ * lies in it (game pixels from its left edge; 0 when not wide). */
+static int outW = 320 * S, viewW = 320, viewOffX;
+#define OUT_W outW
+/* #103: widescreen scene state for presents outside RFI_Frame (RFI_PresentWideStill):
+ * wideValid while the last game frame was wide and the screen still shows the game;
+ * sbX0..sbX1/sbY0..sbY1 = the scorebox's rectangle in out8 (empty if none). */
+static bool wideValid;
+static int sbX0, sbX1, sbY0, sbY1;
 const char *rfi_modeStrings[] = {"off", "grid", "pixel", "subpixel", NULL};
 
 /* stats */
@@ -370,7 +381,8 @@ static void BuildLayers(int originTX, int originTY)
 		{
 			int mx = originTX + tx, my = originTY + ty;
 			if (mx < 0 || my < 0 || mx >= mw || my >= mh) continue;
-			int bg = CA_TileAtPos(mx, my, 0), fg = CA_TileAtPos(mx, my, 1);
+			/* #103: animated tiles outside RF's port animate too (identical inside it) */
+			int bg = RF_DisplayTileAt(mx, my, 0), fg = RF_DisplayTileAt(mx, my, 1);
 			void *src = CA_GetGrChunk(ca_gfxInfoE.offTiles16, bg, "Tile16", false);
 			if (src) VL_UnmaskedToPAL8(src, layerBack, tx * 16, ty * 16, LAYER_W, 16, 16);
 			if (!fg) continue;
@@ -394,7 +406,7 @@ static void BuildLayers(int originTX, int originTY)
 /* Sample a 1x layer into the SxS output; (offX, offY) = camera minus layer origin, in output pixels. */
 static void BlitLayer(const uint8_t *layer, int offX, int offY, bool keyed)
 {
-	static int lxTab[OUT_W];
+	static int lxTab[OUT_MAX_W];
 	for (int x = 0; x < OUT_W; ++x)
 	{
 		int lx = (x + offX) / S;
@@ -481,7 +493,7 @@ static void RFI_DebugDumpFrame(void)
 	for (int y = 0; y < 200; ++y)
 	{
 		for (int x = 0; x < 320; ++x)
-			row[x] = (uint8_t)(out8[(y * S) * OUT_W + x * S] & 0xF);
+			row[x] = (uint8_t)(out8[(y * S) * OUT_W + (viewOffX + x) * S] & 0xF);
 		fwrite(row, 1, 320, debugFrameFile);
 	}
 }
@@ -523,8 +535,14 @@ static void SmoothCamera(double tx, double ty, int *outX, int *outY)
 	*outX = (int)floor(smoothD[0] + 0.5); *outY = (int)floor(smoothD[1] + 0.5);
 }
 
+static bool composeStill; /* #103: draw sprites where vanilla RF placed them (grid, alpha 1) */
+
 static void Compose(double alpha)
 {
+	/* #103: frame width; the view and the sim's wake range use the same RF_ViewWidth */
+	viewW = RF_ViewWidth();
+	outW = viewW * S;
+	bool wide = viewW > 320;
 	int qx = (mode == RFI_Mode_Grid) ? 32 : (mode == RFI_Mode_Pixel) ? 16 : 16 / S;
 	int qy = (mode == RFI_Mode_Grid) ? 16 : qx;
 	if (mode == RFI_Mode_Grid) alpha = 1.0;
@@ -546,8 +564,16 @@ static void Compose(double alpha)
 		camX = Quant(Lerp(prevCamX, rf_scrollXUnit, alpha), qx);
 		camY = Quant(Lerp(prevCamY, rf_scrollYUnit, alpha), qy);
 	}
-	int originTX = FloorDiv(camX, 256) - 1, originTY = FloorDiv(camY, 256) - 1;
-	int offX = (camX - originTX * 256) * S / 16, offY = (camY - originTY * 256) * S / 16;
+	/* #103: the wide view's left edge (vx) and the band of map it may show */
+	int vx = camX, bandL = 0, bandR = 0;
+	if (wide)
+		vx = RF_WideViewLeft(camX, viewW, &bandL, &bandR);
+	viewOffX = (camX - vx) / 16;
+	int originTX = FloorDiv(vx, 256) - 1, originTY = FloorDiv(camY, 256) - 1;
+	int offX = (vx - originTX * 256) * S / 16, offY = (camY - originTY * 256) * S / 16;
+	RF_SpriteDrawEntry *hud = NULL; /* the scorebox, drawn last in wide frames */
+	int hudX = 0, hudY = 0;
+	sbX0 = sbX1 = sbY0 = sbY1 = 0;
 
 	logCamX = camX * S / 16; logCamY = camY * S / 16; logAlpha = alpha;
 	logPlat = false;
@@ -592,6 +618,12 @@ static void Compose(double alpha)
 			VH_SpriteTableEntry ste = VH_GetSpriteTableEntry(sde->chunk - ca_gfxInfoE.offSprites);
 			int ux = Lerp(sde->prevUX, sde->curUX, alpha) + ste.originX;
 			int uy = Lerp(sde->prevUY, sde->curUY, alpha) + ste.originY;
+			if (composeStill)
+			{
+				/* #103: vanilla's own placement (prev/cur are not kept when smoothing is off) */
+				ux = (sde->x + sde->shift * 2) << 4;
+				uy = sde->y << 4;
+			}
 			/* world-locked snapping: sprites sit on the same grid as the tiles */
 			ux = Quant(ux, qx); uy = Quant(uy, qy);
 			if (platSde && sde == ck_keenObj->sde)
@@ -608,6 +640,10 @@ static void Compose(double alpha)
 				ux = camX + Quant(sde->curUX - rf_scrollXUnit + ste.originX, qx);
 				uy = camY + Quant(sde->curUY - rf_scrollYUnit + ste.originY, qy);
 			}
+			/* #103: in a wide frame the scorebox stays in the top-left corner of the whole view */
+			bool isHud = wide && ck_scoreBoxObj && sde == ck_scoreBoxObj->sde;
+			if (isHud)
+				ux += vx - camX;
 			if (mode == RFI_Mode_Grid)
 			{
 				/* Vanilla (RF_AddSpriteDraw) only has as many pre-shifted copies as the
@@ -626,9 +662,122 @@ static void Compose(double alpha)
 					(unsigned long)(uintptr_t)sde, z, sde->chunk, sde->prevUX, sde->prevUY, sde->curUX, sde->curUY,
 					(ux - camX) * S / 16, (uy - camY) * S / 16,
 					(ck_keenObj && sde == ck_keenObj->sde && ck_keenObj->currentAction) ? (int)ck_keenObj->currentAction->compatDosPointer : -1);
-			BlitSprite(sde, (ux - camX) * S / 16, (uy - camY) * S / 16);
+			if (isHud)
+			{
+				hud = sde; hudX = (ux - vx) * S / 16; hudY = (uy - camY) * S / 16;
+				continue;
+			}
+			BlitSprite(sde, (ux - vx) * S / 16, (uy - camY) * S / 16);
 		}
 	}
+	if (!wide)
+		return;
+	/* #103: black outside the band the camera may scroll to (beyond a scroll block or the map) */
+	int bx0 = CK_Cross_max(0, CK_Cross_min(OUT_W, (bandL - vx) * S / 16));
+	int bx1 = CK_Cross_max(0, CK_Cross_min(OUT_W, (bandR - vx) * S / 16));
+	for (int y = 0; y < OUT_H; ++y)
+	{
+		uint8_t *row = out8 + y * OUT_W;
+		if (bx0 > 0) memset(row, 0, bx0);
+		if (bx1 < OUT_W) memset(row + bx1, 0, OUT_W - bx1);
+	}
+	if (hud)
+	{
+		BlitSprite(hud, hudX, hudY);
+		VH_SpriteTableEntry ste = VH_GetSpriteTableEntry(hud->chunk - ca_gfxInfoE.offSprites);
+		sbX0 = hudX - 8 * S; sbX1 = hudX + (hud->sw + 8) * S;
+		sbY0 = hudY; sbY1 = hudY + ste.height * S;
+	}
+}
+
+/* #103: copy the 320x200 vanilla screen (sx, sy = its view origin on the screen surface) into
+ * out8 where the camera window lies, so anything drawn straight onto the screen (dialogs, the
+ * status window) shows over the wide view. Where the scorebox is, in the wide view and in the
+ * vanilla window, out8 is kept: the wide frame has moved the scorebox to its own corner. */
+static void OverlayVanilla(int sx, int sy)
+{
+	void *screen = vl_emuegavgaadapter.screen;
+	int vbX0 = sbX0 + viewOffX * S, vbX1 = sbX1 + viewOffX * S;
+	for (int y = 0; y < 200; ++y)
+	{
+		int oy = y * S;
+		bool sbRow = oy >= sbY0 && oy < sbY1;
+		uint8_t *dst = out8 + oy * OUT_W;
+		for (int x = 0; x < 320; ++x)
+		{
+			int ox = (viewOffX + x) * S;
+			if (ox < 0 || ox + S > OUT_W) continue;
+			if (sbRow && ((ox + S > sbX0 && ox < sbX1) || (ox + S > vbX0 && ox < vbX1))) continue;
+			uint8_t c = (uint8_t)(VL_SurfacePGet(screen, sx + x, sy + y) & 15);
+			for (int i = 0; i < S; ++i) dst[ox + i] = c;
+		}
+		for (int i = 1; i < S; ++i)
+			memcpy(out8 + (oy + i) * OUT_W, dst, OUT_W);
+	}
+}
+
+static void ExpandPalette(void)
+{
+	uint32_t pal[16];
+	for (int i = 0; i < 16; ++i)
+	{
+		const uint8_t *c = VL_EGARGBColorTable[vl_emuegavgaadapter.palette[i]];
+		pal[i] = 0xFF000000u | (c[0] << 16) | (c[1] << 8) | c[2];
+	}
+	for (int i = 0; i < OUT_W * OUT_H; ++i)
+		out32[i] = pal[out8[i] & 15];
+}
+
+void RFI_WideSceneEnd(void)
+{
+	wideValid = false;
+}
+
+/* #103: VL_Present during widescreen play (fades, dialogs, the Enter-key status window, and every
+ * frame when smoothing is off). Composes the wide view of the current sim frame on the vanilla
+ * 2-px grid, lays the vanilla screen over its centre and presents that. After the play loop has
+ * ended (death, level exit, the next level's loading box) the last wide frame is reused, since
+ * the map may already be the next one. Returns false when the frame is not wide: the caller then
+ * presents the 320-wide screen as usual (pillarboxed in a wide region). */
+bool RFI_PresentWideStill(void)
+{
+	int sx, sy;
+	if (rf_widePlay)
+	{
+		if (RF_ViewWidth() <= 320)
+		{
+			wideValid = false;
+			return false;
+		}
+		int m = mode;
+		mode = RFI_Mode_Grid;
+		composeStill = true;
+		layersSim = -1; /* tiles may have changed without a sim frame passing */
+		Compose(1.0);
+		composeStill = false;
+		mode = m;
+		layersSim = -1;
+		wideValid = true;
+		/* RF_Refresh sets the scroll after its draw hook; the screen is already drawn for this */
+		sx = RF_UnitToPixel(rf_scrollXUnit & 0xef);
+		sy = RF_UnitToPixel(rf_scrollYUnit & 0xff);
+	}
+	else if (wideValid)
+	{
+		sx = VL_GetScrollX();
+		sy = VL_GetScrollY();
+	}
+	else
+		return false;
+	OverlayVanilla(sx, sy);
+	ExpandPalette();
+	VL_PresentARGB(out32, OUT_W, OUT_H, NULL);
+#ifdef __EMSCRIPTEN__
+	/* like VL_SDL2_Present: callers that loop on VL_Present rely on it yielding to the browser */
+	VL_WaitRAF();
+	CK_Cross_NoteYield();
+#endif
+	return true;
 }
 
 static void LogPresent(double t)
@@ -675,7 +824,7 @@ static void Present(void)
 				uint32_t c = pal[out8[i] & 15];
 				out24[i * 3] = c >> 16; out24[i * 3 + 1] = c >> 8; out24[i * 3 + 2] = c;
 			}
-			fwrite(out24, 1, sizeof(out24), capFile);
+			fwrite(out24, 1, (size_t)OUT_W * OUT_H * 3, capFile);
 			if (capFrames > 0 && dispFrame - capSkip + 1 >= capFrames)
 			{
 				fclose(capFile);
@@ -788,6 +937,7 @@ void RFI_Frame(void)
 		if (alpha < 0) alpha = 0;
 		double c0 = Now();
 		Compose(alpha);
+		wideValid = viewW > 320;
 		logComposeS = Now() - c0;
 		logGapS = lastPresentEnd < 0 ? 0 : g0 - lastPresentEnd;
 		composeSum += logComposeS;
