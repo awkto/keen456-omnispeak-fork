@@ -156,15 +156,25 @@ void CK_Cross_YieldNow(void)
 	emscripten_sleep(0);
 }
 
+static double ck_cross_lastYield = 0;
+
+void CK_Cross_NoteYield(void)
+{
+	ck_cross_lastYield = emscripten_get_now();
+}
+
+/* Busy loops (IN_PumpEvents) call this. It yields only when nothing else has
+ * yielded for 4 ms. A yield after requestAnimationFrame resumed us would move the
+ * next draw out of the rAF callback, so it would only show a refresh later
+ * (keen456-decomp #98); VL_WaitRAF therefore counts as a yield. */
 void CK_Cross_Yield(void)
 {
-	static double last = 0;
 	double now = emscripten_get_now();
-	if (now - last >= 4.0)
+	CK_Cross_WebPoll(); /* rate-limited itself; must run even when we don't sleep */
+	if (now - ck_cross_lastYield >= 4.0)
 	{
-		CK_Cross_WebPoll();
 		emscripten_sleep(0);
-		last = emscripten_get_now();
+		ck_cross_lastYield = emscripten_get_now();
 	}
 }
 #endif
