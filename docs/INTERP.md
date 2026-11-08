@@ -115,7 +115,7 @@ time than vanilla's clamp allows. Measured with SIGSTOP on the droplet:
 `OMNI_DEBUG_INTERP_PRESENTS=<file.csv>` writes one line per presented frame:
 
 ```
-present,host_us,dt_us,sim,alpha
+present,host_us,dt_us,sim,alpha,compose_us,work_us,wait_us,gap_us,raf_lag_us,in_raf
 ```
 
 - `host_us` is the host time after the present call returned, in µs since the
@@ -124,6 +124,15 @@ present,host_us,dt_us,sim,alpha
 - `sim` is the sim frame shown: the frame is interpolated from `sim-1` to `sim`.
 - `alpha` is the interpolation factor used. In `grid` mode the logged alpha is
   always 1.000.
+- Timing columns (keen456-decomp #98), only meaningful in realtime runs:
+  `compose_us` is Compose() (layers, sprites); `work_us` is the palette expand,
+  texture upload and draw calls; `wait_us` is time blocked on the display (vsync,
+  or in the browser the requestAnimationFrame wait plus SDL's swap yield);
+  `gap_us` is the time from the previous present returning to this frame's present
+  loop starting (the sim frame and the game loop, when a sim frame ran in between).
+- `raf_lag_us` (browser only): present end minus the rAF callback's timestamp.
+- `in_raf` (browser only): 1 if the frame was drawn inside a requestAnimationFrame
+  callback. Only those reach the screen at that refresh (see below); 0 elsewhere.
 
 The file is flushed once per sim frame. Example (sdl2, dummy video, `/INTERP pixel`,
 `/TEDLEVEL 1`, `OMNI_DEBUG_INTERP_SCRIPT=right:20-400`):
@@ -140,6 +149,32 @@ The file is flushed once per sim frame. Example (sdl2, dummy video, `/INTERP pix
 252,2111184,6707,61,0.323
 253,2117826,6642,61,0.558
 ```
+
+## Browser (WebAssembly) pacing (#98)
+
+In the browser a WebGL draw reaches the screen at a given refresh only if it is
+made inside that refresh's requestAnimationFrame callback. A draw made in a later
+task (after any `emscripten_sleep`, i.e. a `setTimeout`) shows a refresh later and
+is then overdrawn by the next rAF's frame, so the refresh it was meant for repeats
+the previous picture.
+
+The first web build waited for rAF *after* each present. At a sim boundary the
+rAF callback found alpha >= 1, ran the sim frame, and the game loop's
+`CK_Cross_Yield` (and SDL's swap) yielded before the next compose. Measured in
+headless Chrome, gameplay: only 24 of 58 refreshes a second got a frame drawn
+inside the rAF callback, and those all had alpha 0.5..1 (the 0..0.5 half never
+reached the screen) -- fewer distinct frames than vanilla's 35 Hz, unevenly
+spaced. This is what "smooths 10% of the time" was.
+
+Now `RFI_Frame` waits for the rAF slot *before* choosing alpha
+(`VL_WaitPresentSlot`), and returns at once while still inside a rAF callback
+that has not drawn yet, so the sim frame and the next frame's compose and draw
+happen in the same callback. `VL_PresentARGB` no longer waits after drawing.
+The rAF wait counts as a yield for `CK_Cross_Yield`, which therefore no longer
+breaks out of the callback between the sim and the draw. The browser clock for
+alpha is `performance.now()` (SDL's counter there is `Date.now()`, whole ms).
+After the fix, same test: 60 of 60 presents a second drawn inside rAF, alpha
+spread evenly over 0..1, present interval p5/p50/p95 15.1/16.7/18.4 ms.
 
 ## Pacing without vsync
 

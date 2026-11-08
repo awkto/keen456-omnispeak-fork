@@ -60,6 +60,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <string.h>
 #include <math.h>
 #include <SDL.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 #include "id_ca.h"
 #include "id_in.h"
@@ -95,6 +98,12 @@ extern int rf_maxTics;
 void RFL_CalcTics(void);
 void VL_PresentARGB(const uint32_t *argb, int w, int h, const char *title);
 void VL_FlipPageNoPresent(void);
+#ifdef __EMSCRIPTEN__
+void VL_WaitPresentSlot(void);
+#endif
+/* filled in by the renderer's VL_PresentARGB where it can (id_vl_sdl2.c), for the present log */
+double vl_presentWorkS, vl_presentWaitS, vl_presentRafMs;
+int vl_presentInRaf;
 
 static int mode = RFI_Mode_Off, hz = 60;
 static bool enabled, debugStats, hzForced, fullyStarted;
@@ -136,6 +145,7 @@ static bool logPlat;
 static int logDevX, logDevY;
 static int logSBX, logSBY; /* scorebox screen position (quarter pixels); -99999 if not drawn */
 static double logAlpha;
+static double logComposeS, logGapS, lastPresentEnd = -1; /* OMNI_DEBUG_INTERP_PRESENTS timing */
 
 typedef struct { int key, from, to; } ScriptEv;
 static ScriptEv script[64];
@@ -145,6 +155,13 @@ static double Now(void)
 {
 	if (capFile)
 		return vnow;
+#ifdef __EMSCRIPTEN__
+	/* SDL2's emscripten port has no usable monotonic clock (CLOCK_MONOTONIC_RAW is
+	 * rejected), so SDL_GetPerformanceCounter falls back to gettimeofday: Date.now(),
+	 * whole milliseconds of wall-clock time. Use performance.now(), the clock rAF
+	 * timestamps and the game's TimeCount (id_sd.c) use too (keen456-decomp #98). */
+	return emscripten_get_now() / 1000.0;
+#endif
 	return (double)SDL_GetPerformanceCounter() / (double)SDL_GetPerformanceFrequency();
 }
 
@@ -223,7 +240,7 @@ void RFI_Startup(RFI_Mode m)
 		presentLog = fopen(e, "w");
 		if (presentLog)
 		{
-			fprintf(presentLog, "present,host_us,dt_us,sim,alpha\n");
+			fprintf(presentLog, "present,host_us,dt_us,sim,alpha,compose_us,work_us,wait_us,gap_us,raf_lag_us,in_raf\n");
 			if (!logsAtexit) { atexit(RFI_CloseLogs); logsAtexit = true; }
 		}
 	}
@@ -620,7 +637,16 @@ static void LogPresent(double t)
 		return;
 	if (presentT0 < 0)
 		presentT0 = last = t;
-	fprintf(presentLog, "%ld,%.0f,%.0f,%ld,%.3f\n", dispFrame, (t - presentT0) * 1e6, (t - last) * 1e6, simFrame, logAlpha);
+	/* compose: Compose(); work: palette expand + texture upload + draw calls; wait: blocked in the
+	 * present (vsync / rAF); gap: previous present's return to this compose (sim, game loop, yields);
+	 * raf_lag: browser only, Now() after the rAF resumed minus the rAF callback timestamp */
+	double rafLag = 0;
+#ifdef __EMSCRIPTEN__
+	if (!capFile)
+		rafLag = t * 1e6 - vl_presentRafMs * 1e3;
+#endif
+	fprintf(presentLog, "%ld,%.0f,%.0f,%ld,%.3f,%.0f,%.0f,%.0f,%.0f,%.0f,%d\n", dispFrame, (t - presentT0) * 1e6, (t - last) * 1e6, simFrame, logAlpha,
+		logComposeS * 1e6, vl_presentWorkS * 1e6, vl_presentWaitS * 1e6, logGapS * 1e6, rafLag, vl_presentInRaf);
 	last = t;
 }
 
@@ -665,10 +691,12 @@ static void Present(void)
 		dispFrame++;
 		return;
 	}
+	double e0 = Now();
 	for (int i = 0; i < OUT_W * OUT_H; ++i)
 		out32[i] = pal[out8[i] & 15];
 
 	double t = Now();
+	double expandS = t - e0;
 	char title[128] = "";
 	if (lastPresent > 0)
 	{
@@ -688,7 +716,7 @@ static void Present(void)
 	}
 	/* No vsync to block on: sleep until the next refresh slot instead of spinning. */
 	/* Never force pacing on top of vsync: only pace when vsync is off or missing (keen456-decomp #74). */
-#ifndef __EMSCRIPTEN__ /* browser: VL_PresentARGB awaits requestAnimationFrame */
+#ifndef __EMSCRIPTEN__ /* browser: RFI_Frame awaits requestAnimationFrame (VL_WaitPresentSlot) */
 	if (!vl_swapInterval || noVsync)
 	{
 		double wait = nextPresent - Now();
@@ -701,8 +729,13 @@ static void Present(void)
 	double before = Now();
 	VL_PresentARGB(out32, OUT_W, OUT_H, title[0] ? title : NULL);
 	double after = Now();
+	vl_presentWorkS += expandS; /* debug log: palette expand counts as present work */
 	/* Only probe for missing vsync when the user actually requested vsync (keen456-decomp #74). */
+#ifdef __EMSCRIPTEN__
+	if (0) /* the browser paces in RFI_Frame (VL_WaitPresentSlot); presents never block */
+#else
 	if (vl_swapInterval)
+#endif
 	{
 		/* Presents that never block mean vsync isn't pacing us: from then on, pace by sleeping. */
 		fastPresents = (after - before < 0.0005) ? fastPresents + 1 : 0; /* only non-blocking presents count (keen456-decomp #74) */
@@ -740,13 +773,24 @@ void RFI_Frame(void)
 	}
 	for (; !debugFrameFile;)
 	{
+		double g0 = Now();
+#ifdef __EMSCRIPTEN__
+		/* browser: wait for the refresh first, then pick alpha and draw inside the
+		 * rAF callback (see VL_WaitPresentSlot); returns at once if this callback
+		 * has not drawn yet, e.g. right after the sim frame ran in it */
+		if (!capFile)
+			VL_WaitPresentSlot();
+#endif
 		double alpha = (Now() - frameStart) / dur;
 		if (alpha >= 1.0) break;
 		if (alpha < 0) alpha = 0;
 		double c0 = Now();
 		Compose(alpha);
-		composeSum += Now() - c0;
+		logComposeS = Now() - c0;
+		logGapS = lastPresentEnd < 0 ? 0 : g0 - lastPresentEnd;
+		composeSum += logComposeS;
 		Present();
+		lastPresentEnd = Now();
 	}
 	frameStart += dur;
 	/* the page flip VL_Present would have done, so the renderer's buffers

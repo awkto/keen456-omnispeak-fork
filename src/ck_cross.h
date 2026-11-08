@@ -108,6 +108,8 @@ int CK_Cross_strncasecmp(const char *s1, const char *s2, size_t n);
 // WebAssembly: yield to the browser event loop (Asterify). Rate-limited variant for busy loops.
 void CK_Cross_Yield(void);
 void CK_Cross_YieldNow(void);
+// Record that we just came back from a yield made elsewhere (e.g. awaiting requestAnimationFrame).
+void CK_Cross_NoteYield(void);
 #else
 #define CK_Cross_Yield() ((void)0)
 #define CK_Cross_YieldNow() ((void)0)

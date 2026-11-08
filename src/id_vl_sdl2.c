@@ -7,10 +7,32 @@
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 /* Block (asyncify) until the next browser animation frame: vsync pacing. */
-EM_ASYNC_JS(void, VL_WaitRAF, (void), {
-	await new Promise(r => requestAnimationFrame(r));
+/* Module.__inRaf is 1 from a rAF callback until the end of that task (the timeout queued
+ * in the callback runs before any later yield resumes us): a draw made while it is set
+ * reaches the screen at this refresh; any other draw only at the next one (keen456-decomp #98). */
+EM_ASYNC_JS(double, VL_WaitRAF, (void), {
+	return await new Promise(r => requestAnimationFrame(t => {
+		Module.__inRaf = 1;
+		setTimeout(() => { Module.__inRaf = 0; }, 0);
+		r(t);
+	}));
 });
+EM_JS(int, VL_InRAF, (void), { return Module.__inRaf | 0; });
+EM_JS(void, VL_ConsumeRAF, (void), { Module.__inRaf = 0; });
 #endif
+/* debug timing of the last VL_PresentARGB (rf_interp OMNI_DEBUG_INTERP_PRESENTS):
+ * seconds spent uploading/drawing, seconds waiting for the display, rAF timestamp (ms, browser only),
+ * whether the draw was made inside a rAF callback (browser only) */
+extern double vl_presentWorkS, vl_presentWaitS, vl_presentRafMs; /* defined in rf_interp.c */
+extern int vl_presentInRaf;
+static inline double VL_DebugNowS(void)
+{
+#ifdef __EMSCRIPTEN__
+	return emscripten_get_now() / 1000.0; /* SDL's counter is Date.now() (whole ms) there */
+#else
+	return (double)SDL_GetPerformanceCounter() / (double)SDL_GetPerformanceFrequency();
+#endif
+}
 
 static SDL_Window *vl_sdl2_window;
 static SDL_Renderer *vl_sdl2_renderer;
@@ -391,6 +413,7 @@ static void VL_SDL2_Present(void *surface, int scrlX, int scrlY, bool singleBuff
 	SDL_RenderPresent(vl_sdl2_renderer);
 #ifdef __EMSCRIPTEN__
 	VL_WaitRAF();
+	CK_Cross_NoteYield();
 #endif
 }
 
@@ -498,6 +521,7 @@ void VL_PresentARGB(const uint32_t *argb, int w, int h, const char *title)
 	if (title) SDL_SetWindowTitle(vl_sdl2_window, title);
 	SDL_Rect renderRect = {(Sint16)vl_renderRgn_x, (Sint16)vl_renderRgn_y, vl_renderRgn_w, vl_renderRgn_h};
 	SDL_Rect fullRect = {(Sint16)vl_fullRgn_x, (Sint16)vl_fullRgn_y, vl_fullRgn_w, vl_fullRgn_h};
+	double pc0 = VL_DebugNowS();
 	SDL_UpdateTexture(tex, 0, argb, w * 4);
 	// renderRect is in the integer-scaled space (vl_integerWidth x vl_integerHeight),
 	// which VL_SDL2_Present renders into vl_sdl2_scaledTarget and stretches to
@@ -520,11 +544,40 @@ void VL_PresentARGB(const uint32_t *argb, int w, int h, const char *title)
 	SDL_SetRenderDrawColor(vl_sdl2_renderer, bc[0], bc[1], bc[2], 255);
 	SDL_RenderFillRect(vl_sdl2_renderer, &fullRect);
 	SDL_RenderCopy(vl_sdl2_renderer, tex, 0, &dst);
-	SDL_RenderPresent(vl_sdl2_renderer);
+	double pc1 = VL_DebugNowS();
 #ifdef __EMSCRIPTEN__
-	VL_WaitRAF();
+	vl_presentInRaf = VL_InRAF();
+	VL_ConsumeRAF(); /* this refresh has its frame; the next one needs a new rAF */
+#endif
+	SDL_RenderPresent(vl_sdl2_renderer);
+	double pc2 = VL_DebugNowS();
+	vl_presentWorkS = pc1 - pc0;
+#ifdef __EMSCRIPTEN__
+	vl_presentWaitS += pc2 - pc1; /* SDL's swap yields (emscripten_sleep(0)) */
+#else
+	vl_presentWaitS = pc2 - pc1;
 #endif
 }
+
+#ifdef __EMSCRIPTEN__
+/* Browser pacing for rf_interp (keen456-decomp #98). A WebGL draw reaches the screen at
+ * this refresh only if it is made inside the requestAnimationFrame callback; a draw made
+ * in any later task (after an emscripten_sleep, say) shows a refresh later and is then
+ * overdrawn by the next rAF's frame, so that refresh repeats the previous picture.
+ * rf_interp therefore waits here *before* choosing alpha and composing, and VL_PresentARGB
+ * does not wait after drawing. If we are still inside a rAF callback that has not drawn
+ * yet (the sim frame ran in it), return at once and let it draw. */
+void VL_WaitPresentSlot(void)
+{
+	vl_presentWaitS = 0;
+	if (VL_InRAF())
+		return;
+	double t0 = VL_DebugNowS();
+	vl_presentRafMs = VL_WaitRAF();
+	CK_Cross_NoteYield();
+	vl_presentWaitS = VL_DebugNowS() - t0;
+}
+#endif
 
 // Single-buffered: nothing to flip.
 void VL_FlipPageNoPresent(void)
