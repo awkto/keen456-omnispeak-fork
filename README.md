@@ -25,8 +25,8 @@ commercial). No game data is in this repository.
 - **Smoothing menu.** Configure > Options gets Smoothing mode and Camera smoothing items.
 - **Frame pacing and present loop.** The interpolated present sleeps to the display rate when vsync
   is missing, caps catch-up after stalls, survives dropped frames, and can log present timing
-  (`OMNI_DEBUG_INTERP_PRESENTS`). It uses the same geometry as the vanilla present, so aspect
-  correction and scaling behave identically; the Enter-key status window and scorebox are handled
+  (`OMNI_DEBUG_INTERP_PRESENTS`). Interpolated frames use the same geometry as the vanilla present
+  (fixes a squashed picture in early builds), so aspect correction and scaling behave identically; the Enter-key status window and scorebox are handled
   explicitly.
 - **Profiles and fixes** (`src/ck_fix.h`). `/PROFILE vanilla|enhanced`, with `/FIX name` and `/NOFIX name`
   for individual toggles. Fixes that change the simulation are forced off during demos and
@@ -51,8 +51,9 @@ Smoothing and fixes are only worth having if the game still plays exactly like t
 [`oracle/`](oracle/README.md) directory holds the DOS reference: the reconstructed DOS source,
 rebuilt byte-identical with Borland C++, an instrumented build that writes a per-tic state trace of
 every built-in demo, and the tools to compare them. The golden traces for Keen 4, 5 and 6 are in
-[`tests/dos-golden/`](tests/dos-golden/README.md). The fork is trace-identical to DOS on all
-built-in Keen 4 and Keen 5 demos, with interpolation off and on (Keen 6 reference traces are committed too, not yet checked in CI).
+[`tests/dos-golden/`](tests/dos-golden/README.md). The fork is trace-identical to DOS on all 15
+built-in Keen 4, 5 and 6 (v1.4) demos, with interpolation off and on. CI re-checks Keen 4 on every push
+(Keen 5/6 data is commercial, so those are checked by hand with `oracle/harness/oracle-run.sh`).
 
 ## Build and run
 
