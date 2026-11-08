@@ -1,0 +1,37 @@
+== oracle run 2026-10-31T17:50:08Z on keen-oracle, engine ?
+verify-k4: PASS
+keendump-k4: built
+verify-k5: PASS
+keendump-k5: built
+golden k4 demo 0: reproducible, /root/golden/k4-d0.trc: 812 frames, max live objects 27
+golden k4 demo 1: reproducible, /root/golden/k4-d1.trc: 687 frames, max live objects 46
+golden k4 demo 2: reproducible, /root/golden/k4-d2.trc: 749 frames, max live objects 71
+golden k4 demo 3: reproducible, /root/golden/k4-d3.trc: 645 frames, max live objects 56
+golden k4 demo 4: reproducible, /root/golden/k4-d4.trc: 271 frames, max live objects 8
+golden k5 demo 0: reproducible, /root/golden/k5-d0.trc: 842 frames, max live objects 45
+golden k5 demo 1: reproducible, /root/golden/k5-d1.trc: 1024 frames, max live objects 82
+golden k5 demo 2: reproducible, /root/golden/k5-d2.trc: 1381 frames, max live objects 67
+golden k5 demo 3: reproducible, /root/golden/k5-d3.trc: 1267 frames, max live objects 93
+golden k5 demo 4: reproducible, /root/golden/k5-d4.trc: 703 frames, max live objects 9
+engine: built (DEBUG, sdl2)
+fork k4 demo 0 interp=off: BYTE-IDENTICAL to DOS
+fork k4 demo 0 interp=pixel: BYTE-IDENTICAL to DOS
+fork k4 demo 1 interp=off: BYTE-IDENTICAL to DOS
+fork k4 demo 1 interp=pixel: BYTE-IDENTICAL to DOS
+fork k4 demo 2 interp=off: BYTE-IDENTICAL to DOS
+fork k4 demo 2 interp=pixel: BYTE-IDENTICAL to DOS
+fork k4 demo 3 interp=off: BYTE-IDENTICAL to DOS
+fork k4 demo 3 interp=pixel: BYTE-IDENTICAL to DOS
+fork k4 demo 4 interp=off: BYTE-IDENTICAL to DOS
+fork k4 demo 4 interp=pixel: BYTE-IDENTICAL to DOS
+fork k5 demo 0 interp=off: BYTE-IDENTICAL to DOS
+fork k5 demo 0 interp=pixel: BYTE-IDENTICAL to DOS
+fork k5 demo 1 interp=off: BYTE-IDENTICAL to DOS
+fork k5 demo 1 interp=pixel: BYTE-IDENTICAL to DOS
+fork k5 demo 2 interp=off: BYTE-IDENTICAL to DOS
+fork k5 demo 2 interp=pixel: equal on compared fields
+fork k5 demo 3 interp=off: BYTE-IDENTICAL to DOS
+fork k5 demo 3 interp=pixel: BYTE-IDENTICAL to DOS
+fork k5 demo 4 interp=off: equal on compared fields
+fork k5 demo 4 interp=pixel: BYTE-IDENTICAL to DOS
+== result: ALL MATCH

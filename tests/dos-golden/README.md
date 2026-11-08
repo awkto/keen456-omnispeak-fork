@@ -1,50 +1,35 @@
-# DOS golden traces (Keen 4)
+# DOS golden traces (Keen 4, 5, 6)
 
-`k4-d0.trc.zst` … `k4-d4.trc.zst` are reference traces of the five built-in Keen 4
-demos, produced by the **byte-identical DOS rebuild** of the original game — the
-`keen456-decomp` project's `KEENDUMP` build — running the Keen 4 **v1.4 shareware**
-data (`EGAGRAPH.CK4`, `GAMEMAPS.CK4`, `AUDIO.CK4`).
+`k<E>-d<N>.trc.zst` are reference traces of the five built-in demos of each episode, produced by the
+**byte-identical DOS rebuild** of the original game (the `KEENDUMP` build in [`oracle/`](../../oracle/README.md)).
+`MANIFEST.sha256` has the sha256 of each *uncompressed* trace; `oracle-report.txt` is the report of
+the run that produced the Keen 4 and Keen 5 set (2026-10-31/11-01).
 
-The trace format is the same one Omnispeak writes with `/DUMPFILE`: a sequence of
-fixed-size per-frame records, each holding a `TimeCount` word, the whole gamestate
-block, and the 100-entry object array (see `docs/TRACE_FORMAT.md`). Because the DOS
-and Omnispeak builds are byte-identical in the parts that matter, the traces can be
-compared field-for-field to prove the engine still reproduces the original game.
+- **Keen 4**: recorded with the v1.4 shareware data (`EGAGRAPH.CK4`, `GAMEMAPS.CK4`, `AUDIO.CK4`).
+- **Keen 5 and Keen 6**: recorded from the commercial v1.4 data. The traces are derived per-tic state
+  dumps (gamestate and object array), not game data, and are committed so they travel with the repo.
 
-`tracecmp.py` is a small reader/comparer:
+The trace format is the one Omnispeak writes with `/DUMPFILE`: fixed-size per-frame records, each
+holding a `TimeCount` word, the whole gamestate block and the 100-entry object array
+(see [`oracle/docs/TRACE_FORMAT.md`](../../oracle/docs/TRACE_FORMAT.md)).
 
-```sh
-python3 tracecmp.py info -e 4 k4-d0.trc.zst    # frames, live objects, TimeCount slack
-python3 tracecmp.py cmp  -e 4 A.trc B.trc      # exit 0 = equal on all compared fields
-```
+## CI covers Keen 4 only
 
-It compares the gamestate block and, for every live object (the list from slot 0
-along `next`), every field except `sprite`; `next`/`prev` are compared as slot
-numbers. `TimeCount` (wall-clock), free slots and `sprite` are ignored.
-
-## Running the same check locally
-
-Build a debug (playloop-dumper) SDL2 build, then run each demo in a directory that
-contains both the shareware data and the Omnispeak data files:
+`.github/workflows/dos-oracle.yml` downloads the Keen 4 shareware and checks all five demos, with and
+without interpolation. Keen 5 and 6 are commercial, so CI has no data for them and leaves them
+unchecked. To check them locally (with your own data in `$KEEN_DATA`):
 
 ```sh
-make -C src -j4 DEBUG=1 RENDERER=sdl2        # binary: bin/omnispeak
-
-# get the shareware data once
-mkdir -p /tmp/keen4 && cd /tmp/keen4
-wget https://davidgow.net/keen/4keen14.zip && unzip -o 4keen14.zip
-for f in EGAGRAPH GAMEMAPS AUDIO; do
-  cp "$(find . -maxdepth 1 -iname "${f}.CK4" | head -n1)" "./${f}.CK4"
-done
-cp -r /path/to/repo/data/keen4/* .
-
-# for each demo 0..4 and each mode
-zstd -d -c /path/to/repo/tests/dos-golden/k4-d0.trc.zst > golden.trc
-SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
-  /path/to/repo/bin/omnispeak /EPISODE 4 /PLAYDEMO 0 /DUMPFILE out.trc /NOINTERP
-python3 /path/to/repo/tests/dos-golden/tracecmp.py cmp -e 4 golden.trc out.trc
+zstd -d -c tests/dos-golden/k5-d0.trc.zst > /tmp/g.trc
+(cd "$RUN" && omnispeak /EPISODE 5 /PLAYDEMO 0 /DUMPFILE /tmp/f.trc /NOINTERP)   # $RUN = data files + data/keen5/*
+python3 oracle/tools/tracecmp.py cmp -e 5 /tmp/g.trc /tmp/f.trc
 ```
 
-Run the same command with `/INTERP pixel` in place of `/NOINTERP` to check the
-interpolating presenter (SDL2 renderers only). `.github/workflows/dos-oracle.yml`
-does exactly this for all five demos in both modes on every push/PR to `main`.
+`oracle/harness/oracle-run.sh` does this for every demo.
+
+## Reading a trace
+
+```sh
+python3 oracle/tools/tracecmp.py info -e 4 k4-d0.trc      # frames, live objects, TimeCount slack (uncompressed input)
+python3 oracle/tools/tracecmp.py cmp  -e 4 A.trc B.trc    # exit 0 = equal on all compared fields
+```
