@@ -1,0 +1,19 @@
+keen456-omnispeak-fork (its oracle/ part) is free software under the GNU General Public License, version 2 or later.
+
+It is built on:
+
+  Reconstructed Commander Keen 4-6 Source Code
+    Copyright (C) 2021 K1n9_Duk3                          (GPL-2.0-or-later)
+  Catacomb 3-D Source Code
+    Copyright (C) 1993-2014 Flat Rock Software            (GPL-2.0-or-later)
+  Wolfenstein 3-D Source Code
+    Copyright (C) 1992 id Software
+  Keen Dreams Source Code
+    Copyright (C) 2014 Javier M. Chavez                   (GPL-2.0-or-later)
+
+Reference implementations consulted (both GPL-2.0):
+  Omnispeak  - https://github.com/sulix/omnispeak
+  KEEN70HZ   - https://github.com/juj/KEEN70HZ
+
+Commander Keen and its game data are copyright id Software. No game data, original
+executable, or Borland compiler file is distributed in this repository.

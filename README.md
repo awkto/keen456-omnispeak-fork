@@ -1,3 +1,94 @@
+# keen456-omnispeak-fork
+
+A fork of [Omnispeak](https://github.com/sulix/omnispeak) (the open-source reimplementation of
+Commander Keen 4, 5 and 6) that keeps the original game's behaviour bug-for-bug and adds smooth
+high-refresh presentation, optional fixes, a few quality-of-life features and a browser (WASM) build.
+Default behaviour is the `vanilla` profile and stays tic-for-tic identical to the DOS game; every
+change is presentation-only or sits behind a named toggle.
+
+You need your own copies of the game files (Keen 4 v1.4 shareware is free; Keen 5 and 6 are
+commercial). No game data is in this repository.
+
+## What is new compared to upstream Omnispeak
+
+- **Frame interpolation (smoothing).** The simulation keeps running at the original 35 fps; the
+  screen is redrawn at the display's refresh rate by interpolating the camera and every sprite
+  between sim frames (`src/rf_interp.c`, design notes in [`docs/INTERP.md`](docs/INTERP.md)).
+  `/INTERP <mode>` or `/NOINTERP`; modes:
+  - `off`: vanilla presentation.
+  - `grid`: the vanilla 2-pixel EGA scroll grid, redrawn at display rate. Pixel-identical to the
+    vanilla renderer (checked in CI).
+  - `pixel`: whole-pixel motion, which removes the uneven 2,4,2,4 scroll steps.
+  - `subpixel`: quarter-pixel motion.
+- **Camera smoothing** (`/FIX camera-smoothing`, opt-in): velocity-smooths the displayed camera in
+  `pixel`/`subpixel` modes. Presentation only.
+- **Smoothing menu.** Configure > Options gets Smoothing mode and Camera smoothing items.
+- **Frame pacing and present loop.** The interpolated present sleeps to the display rate when vsync
+  is missing, caps catch-up after stalls, survives dropped frames, and can log present timing
+  (`OMNI_DEBUG_INTERP_PRESENTS`). It uses the same geometry as the vanilla present, so aspect
+  correction and scaling behave identically; the Enter-key status window and scorebox are handled
+  explicitly.
+- **Profiles and fixes** (`src/ck_fix.h`). `/PROFILE vanilla|enhanced`, with `/FIX name` and `/NOFIX name`
+  for individual toggles. Fixes that change the simulation are forced off during demos and
+  `/DUMPFILE` unless `/FORCEFIXES` is given. Current entries: `interpolation`, `time-based-fades`
+  (palette fades last the same wall time at any refresh rate), `stall-charge-once` and
+  `clock-continuity` (no game-clock jump after stalls, pauses and menus), `camera-smoothing`, `modern-controls`.
+- **Tile animation fix.** Animated tiles advance with a `while` loop like DOS, instead of Omnispeak's `if`.
+- **Modern controls** (`/MODERNCONTROLS`, opt-in, menu entry): Alt is a press-and-release pogo
+  toggle that also jumps (super-bounce). Never active in demos.
+- **WebAssembly build** (`web/`, `tools/build-wasm.sh`): runs in the browser with rAF-paced
+  interpolated presentation, IndexedDB saves and the engine source linked from the page (GPL).
+- **Keen 6:** the copy-protection creature question is skipped by default.
+- **DOS-verified CI.** `.github/workflows/dos-oracle.yml` plays the five built-in Keen 4 demos with
+  and without interpolation and compares the per-tic state trace to golden traces recorded from the
+  real DOS game; it also pixel-compares `grid` mode with the vanilla renderer.
+- **Packaging.** `tools/package-linux.sh` and `tools/package-windows.sh` build tester bundles
+  (with Keen 4 shareware), and `tools/deploy-keen456x.sh` publishes the WASM build.
+
+## Proven faithful
+
+Smoothing and fixes are only worth having if the game still plays exactly like the original. The
+[`oracle/`](oracle/README.md) directory holds the DOS reference: the reconstructed DOS source,
+rebuilt byte-identical with Borland C++, an instrumented build that writes a per-tic state trace of
+every built-in demo, and the tools to compare them. The golden traces for Keen 4, 5 and 6 are in
+[`tests/dos-golden/`](tests/dos-golden/README.md). The fork is trace-identical to DOS on all
+built-in Keen 4 and Keen 5 demos, with interpolation off and on (Keen 6 reference traces are committed too, not yet checked in CI).
+
+## Build and run
+
+Linux (needs SDL2 and a C compiler):
+
+    make -C src RENDERER=sdl2 -j4          # binary in bin/omnispeak
+    cd /path/to/keen4-files                # EGAGRAPH/GAMEMAPS/AUDIO.CK4 plus this repo's data/keen4/*
+    omnispeak /EPISODE 4 /PROFILE enhanced /INTERP subpixel
+
+Copy the tables from `data/keen<N>/` next to your game files (details in the upstream README
+below). CMake builds also work (`CMakeLists.txt`). Other targets:
+
+- Browser: `tools/build-wasm.sh` (needs Emscripten; see `web/`).
+- Tester bundles: `tools/package-linux.sh`, `tools/package-windows.sh`.
+- Fetch the free Keen 4 shareware for testing: `tools/fetch-k4-shareware.sh`.
+- Check the sim against the committed reference: `tools/vanilla-guard.sh`.
+- Docs: [`docs/`](docs/) (interpolation, timing, jitter, actors, refresh manager, data policy).
+  Contributor rules: [`AGENTS.md`](AGENTS.md).
+
+## Related projects
+
+[keen456](https://github.com/awkto/keen456) is a separate, independent DOSBox / js-dos player for the
+original DOS game. It shares no code with this repository.
+
+## Licence
+
+GPL-2.0-or-later, see [`LICENSE`](LICENSE) and [`oracle/NOTICE`](oracle/NOTICE). Commander Keen and
+its game data are copyright id Software.
+
+---
+
+## Upstream Omnispeak README
+
+The text below is Omnispeak's original `README`, unchanged.
+
+```text
 Omnispeak: An reimplementation of "Commander Keen in Goodbye Galaxy!"
 
 Omnispeak is an open-source reimplementation of Commander Keen episodes 4, 5,
@@ -235,3 +326,4 @@ david@davidgow.net
 == END OF TEXT ==
 
 That's all!  Now go play Commander Keen!
+```

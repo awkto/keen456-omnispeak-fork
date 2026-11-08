@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Minimal reader/comparer for KEENDUMP / Omnispeak /DUMPFILE traces (docs/TRACE_FORMAT.md).
+"""Minimal reader/comparer for KEENDUMP / Omnispeak /DUMPFILE traces (oracle/docs/TRACE_FORMAT.md).
 
   tracecmp.py info -e 4 A.trc            # frames, live objects, TimeCount slack
   tracecmp.py cmp  -e 4 A.trc B.trc      # compare; exit 0 = equal on all compared fields
@@ -11,8 +11,8 @@ TimeCount (wall-clock), free slots, and `sprite`. A full tracediff with names is
 """
 import argparse, struct, sys
 
-GS_SIZE = {4: 86, 5: 88}                 # sizeof(gametype); K6 would be 90
-OBJARRAY = {4: 0xA807, 5: 0x9E6F}        # DS offset of objarray (= Omnispeak ck_exe_objArrayOffset)
+GS_SIZE = {4: 86, 5: 88, 6: 90}              # sizeof(gametype)
+OBJARRAY = {4: 0xA807, 5: 0x9E6F, 6: 0xA995}        # DS offset of objarray (= Omnispeak ck_exe_objArrayOffset)
 OBJ_SIZE, MAXACTORS = 76, 100
 OBJ_FIELDS = ('obclass active needtoreact needtoclip nothink x y xdir ydir xmove ymove xspeed yspeed '
               'ticcount state shapenum priority left top right bottom midx tileleft tiletop tileright '
@@ -22,6 +22,9 @@ GS_FIELDS = {
         'wetsuit', 'rescued', 'keys[0]', 'keys[1]', 'keys[2]', 'keys[3]', 'mapon', 'lives', 'difficulty', 'riding'],
     5: ['worldx', 'worldy'] + [f'leveldone[{i}]' for i in range(25)] + ['score', 'nextextra', 'ammo', 'drops',
         'keycard', 'destroyed', 'numfuses', 'keys[0]', 'keys[1]', 'keys[2]', 'keys[3]', 'mapon', 'lives', 'difficulty', 'riding'],
+    6: ['worldx', 'worldy'] + [f'leveldone[{i}]' for i in range(25)] + ['score', 'nextextra', 'ammo', 'drops',
+        'sandwichstate', 'hookstate', 'passcardstate', 'rocketstate', 'keys[0]', 'keys[1]', 'keys[2]', 'keys[3]',
+        'mapon', 'lives', 'difficulty', 'riding'],
 }
 
 
@@ -99,9 +102,9 @@ def cmd_cmp(a):
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sp = p.add_subparsers(dest='c', required=True)
-    s = sp.add_parser('info'); s.add_argument('-e', '--episode', type=int, choices=(4, 5), required=True); s.add_argument('trace')
+    s = sp.add_parser('info'); s.add_argument('-e', '--episode', type=int, choices=(4, 5, 6), required=True); s.add_argument('trace')
     s.set_defaults(f=cmd_info)
-    s = sp.add_parser('cmp'); s.add_argument('-e', '--episode', type=int, choices=(4, 5), required=True)
+    s = sp.add_parser('cmp'); s.add_argument('-e', '--episode', type=int, choices=(4, 5, 6), required=True)
     s.add_argument('a'); s.add_argument('b'); s.add_argument('--max', type=int, default=10, help='differing frames to print')
     s.set_defaults(f=cmd_cmp)
     a = p.parse_args()
