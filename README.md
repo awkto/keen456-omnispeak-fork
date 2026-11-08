@@ -32,7 +32,12 @@ commercial). No game data is in this repository.
   for individual toggles. Fixes that change the simulation are forced off during demos and
   `/DUMPFILE` unless `/FORCEFIXES` is given. Current entries: `interpolation`, `time-based-fades`
   (palette fades last the same wall time at any refresh rate), `stall-charge-once` and
-  `clock-continuity` (no game-clock jump after stalls, pauses and menus), `camera-smoothing`, `modern-controls`.
+  `clock-continuity` (no game-clock jump after stalls, pauses and menus), `camera-smoothing`, `modern-controls`, `widescreen`.
+- **True widescreen** (`/ASPECT 16:10|16:9|fit`, Options > Aspect): the game shows more of the level
+  (384x200 or 428x200, or the window's shape) instead of stretching the picture, stopping at map
+  edges and scroll blocks; menus and text screens stay 4:3 and centred. With the `widescreen` fix
+  (sim, on in `enhanced`) enemies wake up and act across the whole wider view. Details in
+  [`docs/FILTERS.md`](docs/FILTERS.md).
 - **Tile animation fix.** Animated tiles advance with a `while` loop like DOS, instead of Omnispeak's `if`.
 - **Modern controls** (`/MODERNCONTROLS`, opt-in, menu entry): Alt is a press-and-release pogo
   toggle that also jumps (super-bounce). Never active in demos.

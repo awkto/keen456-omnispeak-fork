@@ -63,6 +63,8 @@ async function start(ep){
   if(cam.checked) args.push('/FIX','camera-smoothing');
   if(mpogo.checked) args.push('/MODERNCONTROLS','/POGOHOLD',pogohold.value); else args.push('/NOMODERNCONTROLS');
   args.push('/FILTER',filter.value,'/PIXELS',pixels.value,'/ASPECT',aspect.value);
+  if(['16:10','16:9','fit'].includes(aspect.value)) args.push('/FIX','widescreen'); // #103: wider view, also with smoothing off
+  {const xa=new URLSearchParams(location.search).get('args'); if(xa) args.push(...xa.trim().split(/\s+/));} // debug/testing: ?args=/TEDLEVEL%201
   canvas.classList.toggle('fill',aspect.value!=='auto'); // explicit aspect: the engine letterboxes inside a full-window canvas
   const M = window.Module = {
     arguments: args, canvas: canvas, preRun: [],
