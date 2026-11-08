@@ -51,6 +51,11 @@ How it works:
   on the camera window (`RF_WideViewLeft`). At the map edges and at scroll blocks the view stops,
   so it never shows anything the vanilla camera could not scroll to; when the space between two
   blocks (or a whole map) is narrower than the view, it is centred and the rest is black.
+- The band is always taken from the sim camera (`rf_scrollXUnit`), and the displayed camera
+  (lerped, or overshooting with `camera-smoothing`) is only clamped into it, horizontally and
+  vertically (`RF_ClampViewTop`). An earlier build took the band from the displayed camera: at a
+  map edge the smoothed camera overshot the stop by a pixel, the border block dropped out of the
+  band and the view jumped 54 px into the border for about 19 sim frames (reported on K5 level 1).
 - Animated tiles outside RF's 21x14 port take their frame from the animation timer
   (`RF_DisplayTileAt`), so the sides animate too.
 - The scorebox sits in the top-left corner of the wide view.
