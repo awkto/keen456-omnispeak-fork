@@ -1513,14 +1513,18 @@ int RF_ViewWidth(void)
 	return 320;
 }
 
-int RF_WideViewLeft(int camXUnit, int viewWPx, int *bandLUnit, int *bandRUnit)
+int RF_WideViewLeft(int camXUnit, int viewWPx, int bandCamXUnit, int *bandLUnit, int *bandRUnit)
 {
-	int camR = camXUnit + RF_PixelToUnit(320);
+	/* The band comes from bandCamXUnit, the real (sim) camera, which never overlaps a block;
+	 * camXUnit may be a displayed camera that overshoots it (camera-smoothing), and is only
+	 * clamped into the band. Taking the band from the overshooting camera loses the block it
+	 * overshot, and the view jumped into the map border for a few frames (#103 follow-up). */
+	int camR = bandCamXUnit + RF_PixelToUnit(320);
 	int bandL = 0, bandR = RF_TileToUnit(rf_mapWidthTiles);
 	for (int i = 0; i < rf_numHorzScrollBlocks; ++i)
 	{
 		int b = RF_TileToUnit(rf_horzScrollBlocks[i]);
-		if (b + RF_TileToUnit(1) <= camXUnit && b + RF_TileToUnit(1) > bandL)
+		if (b + RF_TileToUnit(1) <= bandCamXUnit && b + RF_TileToUnit(1) > bandL)
 			bandL = b + RF_TileToUnit(1);
 		if (b >= camR && b < bandR)
 			bandR = b;
@@ -1537,6 +1541,26 @@ int RF_WideViewLeft(int camXUnit, int viewWPx, int *bandLUnit, int *bandRUnit)
 	if (bandLUnit) *bandLUnit = bandL;
 	if (bandRUnit) *bandRUnit = bandR;
 	return left;
+}
+
+/* #103 follow-up, presentation only: clamp a displayed camera Y (camYUnit) so the 200-line view
+ * stays between the vertical scroll blocks around the real camera (bandCamYUnit). The sim camera
+ * itself always satisfies this, so only an overshooting displayed camera is moved. */
+int RF_ClampViewTop(int camYUnit, int bandCamYUnit)
+{
+	int camB = bandCamYUnit + RF_PixelToUnit(200);
+	int bandT = 0, bandB = RF_TileToUnit(rf_mapHeightTiles);
+	for (int i = 0; i < rf_numVertScrollBlocks; ++i)
+	{
+		int b = RF_TileToUnit(rf_vertScrollBlocks[i]);
+		if (b + RF_TileToUnit(1) <= bandCamYUnit && b + RF_TileToUnit(1) > bandT)
+			bandT = b + RF_TileToUnit(1);
+		if (b >= camB && b < bandB)
+			bandB = b;
+	}
+	if (camYUnit > bandB - RF_PixelToUnit(200)) camYUnit = bandB - RF_PixelToUnit(200);
+	if (camYUnit < bandT) camYUnit = bandT;
+	return camYUnit;
 }
 
 /* #103, presentation only: the tile to draw at (tileX, tileY) of a plane (0 back, 1 fore). RF

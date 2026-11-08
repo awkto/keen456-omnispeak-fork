@@ -43,6 +43,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *   OMNI_DEBUG_INTERP_SKIP / _FRAMES  bound the recording; exits when done.
  *   OMNI_DEBUG_INTERP_LOG=<file.csv>  per-display-frame camera/Keen trace (capture only).
  *   OMNI_DEBUG_INTERP_SCRIPT="right:0-600,jump:80-90,..."  inject input by sim frame.
+ *   OMNI_DEBUG_INTERP_WARP="sim,tx,ty"  put Keen at a tile at that sim frame (reach map edges, #103).
  *   OMNI_DEBUG_INTERP_STATS=1         frame-time/compose stats to stderr + window title.
  *   OMNI_DEBUG_INTERP_PRESENTS=<file.csv>  one line per presented frame, for the cadence
  *       bench (keen456-decomp #30): host time after the present returned (us since the
@@ -80,6 +81,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "ck_act.h"
 #include "ck_def.h"
 #include "ck_play.h"
+#include "ck_phys.h"
 
 #define S 4 /* output scale: sub-pixel quantum is 1/S px = 16/S units */
 #define RF_NUM_SPRITE_Z_LAYERS 4
@@ -564,10 +566,15 @@ static void Compose(double alpha)
 		camX = Quant(Lerp(prevCamX, rf_scrollXUnit, alpha), qx);
 		camY = Quant(Lerp(prevCamY, rf_scrollYUnit, alpha), qy);
 	}
-	/* #103: the wide view's left edge (vx) and the band of map it may show */
-	int vx = camX, bandL = 0, bandR = 0;
-	if (wide)
-		vx = RF_WideViewLeft(camX, viewW, &bandL, &bandR);
+	/* #103: the view's left edge (vx) and the band of map it may show. The band is taken from the
+	 * sim camera; the displayed camera (lerped, or overshooting with camera-smoothing) is only
+	 * clamped into it, on both axes, so no frame shows past a scroll block or the map border.
+	 * The sim camera is always inside, so grid mode (= vanilla) is unchanged. */
+	int bandL = 0, bandR = 0;
+	int vx = RF_WideViewLeft(camX, viewW, rf_scrollXUnit, &bandL, &bandR);
+	camY = RF_ClampViewTop(camY, rf_scrollYUnit);
+	if (!wide)
+		camX = vx; /* the 320 view is the camera window itself */
 	viewOffX = (camX - vx) / 16;
 	int originTX = FloorDiv(vx, 256) - 1, originTY = FloorDiv(camY, 256) - 1;
 	int offX = (vx - originTX * 256) * S / 16, offY = (camY - originTY * 256) * S / 16;
@@ -994,6 +1001,24 @@ void RFI_Frame(void)
 	if (spriteLog)
 		fflush(spriteLog);
 	if (debugStats && simFrame % 25 == 0) fprintf(stderr, "[interp] sim %ld cam %d,%d\n", simFrame, rf_scrollXUnit, rf_scrollYUnit);
+	/* OMNI_DEBUG_INTERP_WARP="sim,tx,ty": debug only, put Keen at tile (tx, ty) at that sim frame
+	 * and recentre the camera, to reach map edges in tests (#103). */
+	{
+		static int warpSim = -2, warpTX, warpTY;
+		if (warpSim == -2)
+		{
+			const char *w = getenv("OMNI_DEBUG_INTERP_WARP");
+			if (!w || sscanf(w, "%d,%d,%d", &warpSim, &warpTX, &warpTY) != 3) warpSim = -1;
+		}
+		if (warpSim >= 0 && simFrame == warpSim && ck_keenObj)
+		{
+			ck_keenObj->posX = warpTX << 8;
+			ck_keenObj->posY = warpTY << 8;
+			CK_ResetClipRects(ck_keenObj);
+			CK_CentreCamera(ck_keenObj);
+			RFI_Reset();
+		}
+	}
 	for (int i = 0; i < scriptN; ++i)
 	{
 		/* re-assert every frame: level start clears the key table */

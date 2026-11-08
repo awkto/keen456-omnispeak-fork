@@ -96,7 +96,7 @@ void CK_ViewTilesX(int *x0, int *x1)
 		return;
 	}
 	int bandL, bandR;
-	int left = RF_WideViewLeft(rf_scrollXUnit, w, &bandL, &bandR);
+	int left = RF_WideViewLeft(rf_scrollXUnit, w, rf_scrollXUnit, &bandL, &bandR);
 	int right = left + RF_PixelToUnit(w);
 	*x0 = RF_UnitToTile(CK_Cross_max(left, bandL));
 	*x1 = RF_UnitToTile(CK_Cross_min(right, bandR));

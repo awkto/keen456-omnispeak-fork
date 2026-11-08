@@ -104,7 +104,8 @@ void RF_Refresh();
 /* keen456-omnispeak-fork #103: widescreen. */
 extern bool rf_widePlay;      // set by CK_PlayLoop while a level or the map is being played
 int RF_ViewWidth(void);       // pixels the game view spans: 320, or wider with the widescreen fix
-int RF_WideViewLeft(int camXUnit, int viewWPx, int *bandLUnit, int *bandRUnit);
+int RF_WideViewLeft(int camXUnit, int viewWPx, int bandCamXUnit, int *bandLUnit, int *bandRUnit);
+int RF_ClampViewTop(int camYUnit, int bandCamYUnit); // presentation: keep a displayed camera inside the scroll blocks
 int RF_DisplayTileAt(int tileX, int tileY, int plane); // presentation: animated frame even outside the port
 /*** Used for dumper (and, partially, for saved games compatibility) ***/
 RF_SpriteDrawEntry *RF_ConvertSpriteArray16BitOffsetToPtr(uint16_t drawEntryoffset);
