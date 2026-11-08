@@ -1,0 +1,29 @@
+# Game data and executables are copyrighted — never commit (Keen 4 shareware is fetched by script)
+*.[Cc][Kk][456]
+*.[Ee][Xx][Ee]
+*.[Cc][Oo][Mm]
+*.jsdos
+*.zip
+# Borland toolchain and third-party DOS binaries
+BC20/
+BC30/
+BC31/
+vendor/
+# Data ripped from the original executables, and build output
+dos/KEEN4-6/static/*.CK?
+dos/KEEN4-6/static/*.OBJ
+dos/KEEN4-6/**/OBJ/*.OBJ
+build/
+*.o
+*.map
+*.MAP
+# Locally generated ground truth for the commercial episodes
+harness/golden/k5/
+harness/golden/k6/
+*.avi
+__pycache__/
+harness/golden/k5-*
+harness/golden/k6-*
+*.trc
+# Packaged tester tarballs
+dist/

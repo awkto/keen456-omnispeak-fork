@@ -1,0 +1,2 @@
+# dos/ is a pristine import of DOS sources: keep CRLF and exact bytes
+dos/** -text
