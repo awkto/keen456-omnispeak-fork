@@ -42,12 +42,12 @@ JOBS=${JOBS:-4}
 RUN_TIMEOUT=${RUN_TIMEOUT:-300}
 NICE="nice -n 19 ionice -c3"
 
-# Byte compare first; if that fails, compare with tests/dos-golden/tracecmp.py, which ignores
-# the wall-clock TimeCount and the presentation-only sprite field (docs in keen456-decomp
+# Byte compare first; if that fails, compare with oracle/tools/tracecmp.py, which ignores
+# the wall-clock TimeCount and the presentation-only sprite field (docs in oracle/docs/
 # TRACE_FORMAT.md). Wall-clock noise is reported but does not fail the guard.
 same() { # a b ep -> 0 identical, 1 equal on compared fields, 2 differs
 	cmp -s "$1" "$2" && return 0
-	python3 "$ROOT/tests/dos-golden/tracecmp.py" cmp -e "$3" "$1" "$2" > /dev/null 2>&1 && return 1
+	python3 "$ROOT/oracle/tools/tracecmp.py" cmp -e "$3" "$1" "$2" > /dev/null 2>&1 && return 1
 	return 2
 }
 

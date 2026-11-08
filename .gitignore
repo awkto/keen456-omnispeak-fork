@@ -3,3 +3,12 @@ SDL-1.*
 ._SDL-1.*
 bin*
 obj*
+# Game data and executables are copyrighted: never commit (Keen 4 shareware is fetched by script)
+*.[Ee][Xx][Ee]
+*.jsdos
+# Traces are committed only zstd-compressed under tests/dos-golden/
+*.trc
+tests/dos-golden/*.log
+tests/dos-golden/*.cmp
+__pycache__/
+dist/

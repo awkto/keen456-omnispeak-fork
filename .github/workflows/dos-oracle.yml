@@ -49,7 +49,7 @@ jobs:
             if ( cd "$rundir" && SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
                  timeout 300 "$BIN" /EPISODE 4 /PLAYDEMO "$n" /DUMPFILE out.trc $mode_args ); then
               zstd -d -c "$GOLDEN/k4-d${n}.trc.zst" > "$rundir/golden.trc"
-              if python3 "$GOLDEN/tracecmp.py" cmp -e 4 "$rundir/golden.trc" "$rundir/out.trc"; then
+              if python3 "$PWD/oracle/tools/tracecmp.py" cmp -e 4 "$rundir/golden.trc" "$rundir/out.trc"; then
                 echo "PASS: demo $n mode $mode"
               else
                 echo "FAIL: demo $n mode $mode (trace mismatch)"
