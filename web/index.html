@@ -7,6 +7,7 @@ html,body{margin:0;height:100%;background:#000;color:#ddd;font-family:sans-serif
 #launcher button{font-size:1.1em;margin:.2em;padding:.4em 1em}
 #stage{display:none;width:100vw;height:100vh;align-items:center;justify-content:center}
 canvas{width:min(100vw,calc(100vh*4/3));height:min(100vh,calc(100vw*3/4));image-rendering:pixelated;outline:none;background:#000}
+canvas.fill{width:100vw;height:100vh}
 #stage:fullscreen{background:#000}
 #fs{position:fixed;top:4px;right:4px;opacity:.5;z-index:2}
 #loading{display:none;position:fixed;inset:0;z-index:3;background:#000;align-items:center;justify-content:center;flex-direction:column;font-size:1.1em}
@@ -19,6 +20,9 @@ canvas{width:min(100vw,calc(100vh*4/3));height:min(100vh,calc(100vw*3/4));image-
 <h2>Commander Keen</h2>
 <div>Smoothing: <select id="smooth"><option value="off">Off</option><option value="grid">Grid</option><option value="pixel">Pixel</option><option value="subpixel" selected>Subpixel</option></select>
 <label><input type="checkbox" id="cam" checked> Camera smoothing</label></div>
+<div>Filter: <select id="filter"><option value="off">Off</option><option value="scanlines">Scanlines</option><option value="crt">CRT</option><option value="curved">Curved CRT</option><option value="rgb">RGB mask</option><option value="soft">Soft</option><option value="amber">Amber</option><option value="green">Green</option></select>
+Pixels: <select id="pixels"><option value="crisp">Crisp</option><option value="light">Smooth: light</option><option value="low">Smooth: low</option><option value="medium">Smooth: medium</option><option value="high">Smooth: high</option></select>
+Aspect: <select id="aspect"><option value="auto">4:3</option><option value="as-is">As-is (square pixels)</option><option value="16:10">16:10</option><option value="16:9">16:9</option><option value="fit">Fit window</option></select></div>
 <div id="btns"></div>
 <p style="font-size:.8em;opacity:.7">Click a button to start (this also enables audio). Saves and options persist in this browser.</p>
 <div id="help"><b>Controls:</b> arrows move, Ctrl jump, Alt pogo, Space fire, Enter status, Esc menu, F11 or the Fullscreen button for full screen.<br>
@@ -38,6 +42,8 @@ function ls(k,v){try{if(v===undefined)return LS.getItem('keen.'+k);LS.setItem('k
  if(m&&[...smooth.options].some(o=>o.value===m))smooth.value=m;
  if(c!==null&&c!==undefined)cam.checked=c==='1';
  if(ep)for(const b of btns.children)if(b.dataset.ep===ep)b.style.outline='2px solid #4a4';}
+for(const id of ['filter','pixels','aspect']){const el=document.getElementById(id),v=new URLSearchParams(location.search).get(id)||ls(id);
+ if(v&&[...el.options].some(o=>o.value===v))el.value=v; el.onchange=()=>ls(id,el.value);}
 smooth.onchange=()=>ls('smooth',smooth.value); cam.onchange=()=>ls('cam',cam.checked?'1':'0');
 // fullscreen the stage (not the canvas) so the 4:3 CSS letterboxing keeps applying
 fs.onclick=()=>{(document.fullscreenElement?document.exitFullscreen():stage.requestFullscreen()).then?.(()=>canvas.focus());canvas.focus();};
@@ -51,6 +57,8 @@ async function start(ep){
   const mode=smooth.value, args=['/EPISODE',String(ep),'/USERPATH','/save'];
   if(mode==='off') args.push('/NOINTERP'); else args.push('/PROFILE','enhanced','/INTERP',mode);
   if(cam.checked) args.push('/FIX','camera-smoothing');
+  args.push('/FILTER',filter.value,'/PIXELS',pixels.value,'/ASPECT',aspect.value);
+  canvas.classList.toggle('fill',aspect.value!=='auto'); // explicit aspect: the engine letterboxes inside a full-window canvas
   const M = window.Module = {
     arguments: args, canvas: canvas, preRun: [],
     print: t=>console.log(t), printErr: t=>{console.warn(t); if(t.startsWith('[interp]')) status.textContent=t.replace(/^\[interp\] Omnispeak interpolation \[F12\] /,'');},

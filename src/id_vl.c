@@ -797,6 +797,8 @@ void VL_ResizeScreen(int w, int h)
 
 bool vl_isFullScreen;
 bool vl_isAspectCorrected;
+int vl_aspectMode;
+const char *vl_aspectStrings[] = {"auto", "4:3", "as-is", "16:10", "16:9", "fit", 0};
 bool vl_isIntegerScaled;
 bool vl_hasOverscanBorder;
 int vl_swapInterval;
@@ -1031,23 +1033,47 @@ int vl_integerHeight;
 
 void VL_CalculateRenderRegions(int realW, int realH)
 {
-	if (vl_isAspectCorrected)
+	int aspNum = 0, aspDen = 1;
+	bool integer = vl_isIntegerScaled;
+	switch (vl_aspectMode)
 	{
-		/* HACK: Naturally, the ratio to compare to may be 4:3,
-		 * but we use the default window dimensions instead
-		 * (so 4:3 covers the contents without the overscan border).
-		 */
-		if (realW * VL_DEFAULT_WINDOW_HEIGHT(2) > realH * VL_DEFAULT_WINDOW_WIDTH(2)) // Wider than default ratio
+	case VL_Aspect_Auto:
+	case VL_Aspect_4x3:
+		if (vl_aspectMode == VL_Aspect_4x3 || vl_isAspectCorrected)
 		{
-			vl_fullRgn_w = realH * VL_DEFAULT_WINDOW_WIDTH(2) / VL_DEFAULT_WINDOW_HEIGHT(2);
+			/* HACK: Naturally, the ratio to compare to may be 4:3,
+			 * but we use the default window dimensions instead
+			 * (so 4:3 covers the contents without the overscan border).
+			 */
+			aspNum = VL_DEFAULT_WINDOW_WIDTH(2);
+			aspDen = VL_DEFAULT_WINDOW_HEIGHT(2);
+		}
+		break;
+	case VL_Aspect_AsIs:
+		integer = true;
+		/* fall through */
+	case VL_Aspect_16x10:
+		aspNum = 16; aspDen = 10;
+		break;
+	case VL_Aspect_16x9:
+		aspNum = 16; aspDen = 9;
+		break;
+	default: /* fit */
+		break;
+	}
+	if (aspNum)
+	{
+		if (realW * aspDen > realH * aspNum) // Wider than the wanted ratio
+		{
+			vl_fullRgn_w = realH * aspNum / aspDen;
 			vl_fullRgn_h = realH;
 			vl_fullRgn_x = (realW - vl_fullRgn_w) / 2;
 			vl_fullRgn_y = 0;
 		}
-		else // Thinner or equal to default ratio
+		else // Thinner or equal
 		{
 			vl_fullRgn_w = realW;
-			vl_fullRgn_h = realW * VL_DEFAULT_WINDOW_HEIGHT(2) / VL_DEFAULT_WINDOW_WIDTH(2);
+			vl_fullRgn_h = realW * aspDen / aspNum;
 			vl_fullRgn_x = 0;
 			vl_fullRgn_y = (realH - vl_fullRgn_h) / 2;
 		}
@@ -1060,8 +1086,7 @@ void VL_CalculateRenderRegions(int realW, int realH)
 		vl_fullRgn_y = 0;
 	}
 
-
-	if (vl_isIntegerScaled)
+	if (integer)
 	{
 		vl_fullRgn_w = CK_Cross_max((vl_fullRgn_w / VL_VGA_GFX_SCALED_WIDTH_PLUS_BORDER) * VL_VGA_GFX_SCALED_WIDTH_PLUS_BORDER, VL_VGA_GFX_SCALED_WIDTH_PLUS_BORDER);
 		vl_fullRgn_h = CK_Cross_max((vl_fullRgn_h / VL_VGA_GFX_SHRUNK_HEIGHT_PLUS_BORDER) * VL_VGA_GFX_SHRUNK_HEIGHT_PLUS_BORDER, VL_VGA_GFX_SHRUNK_HEIGHT_PLUS_BORDER);

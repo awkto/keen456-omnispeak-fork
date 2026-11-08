@@ -65,6 +65,7 @@ if(RENDERER STREQUAL "sdl2")
 		src/id_sd_sdl.c
 		src/id_vl_sdl2.c
 		src/rf_interp.c
+		src/id_vl_filter.c
 	)
 	set(OMNISPEAK_PLATFORM_LIBRARIES
 		${SDL2_LIBRARIES}
@@ -117,6 +118,7 @@ elseif(RENDERER STREQUAL "sdl2gl")
 		src/id_sd_sdl.c
 		src/id_vl_sdl2gl.c
 		src/rf_interp.c
+		src/id_vl_filter.c
 	)
 	if(APPLE)
 		set(OMNISPEAK_PLATFORM_LIBRARIES

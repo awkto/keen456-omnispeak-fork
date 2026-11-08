@@ -37,6 +37,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "ck_fix.h"
 #ifdef WITH_RF_INTERP
 #include "rf_interp.h"
+#include "id_vl_filter.h"
 #endif
 
 #define US_MAX_JOYSTICK_NAME_LENGTH 28
@@ -144,6 +145,39 @@ bool CK_US_SmoothingMenuProc(US_CardMsg msg, US_CardItem *item)
 	RFI_SetMode(next);
 	CFG_SetConfigEnum("interpolation", rfi_modeStrings, next);
 	USL_CtlDialog("Smoothing mode changed", "Press any key", NULL);
+	CK_US_UpdateOptionsMenus();
+	return true;
+}
+
+// Screen filter / aspect / pixel softness (keen456-omnispeak-fork #101). Each press cycles to the next value.
+bool CK_US_FilterMenuProc(US_CardMsg msg, US_CardItem *item)
+{
+	if (msg != US_MSG_CardEntered)
+		return false;
+	VLF_Filter next = (VLF_Filter)((VLF_GetFilter() + 1) % VLF_Filter_Count);
+	VLF_SetFilter(next);
+	CFG_SetConfigEnum("filter", vlf_filterStrings, next);
+	CK_US_UpdateOptionsMenus();
+	return true;
+}
+
+bool CK_US_AspectModeMenuProc(US_CardMsg msg, US_CardItem *item)
+{
+	if (msg != US_MSG_CardEntered)
+		return false;
+	vl_aspectMode = (vl_aspectMode + 1) % VL_Aspect_Count;
+	CFG_SetConfigEnum("aspectMode", vl_aspectStrings, vl_aspectMode);
+	CK_US_UpdateOptionsMenus();
+	return true;
+}
+
+bool CK_US_PixelsMenuProc(US_CardMsg msg, US_CardItem *item)
+{
+	if (msg != US_MSG_CardEntered)
+		return false;
+	VLF_Pixels next = (VLF_Pixels)((VLF_GetPixels() + 1) % VLF_Pixels_Count);
+	VLF_SetPixels(next);
+	CFG_SetConfigEnum("pixels", vlf_pixelsStrings, next);
 	CK_US_UpdateOptionsMenus();
 	return true;
 }
@@ -643,6 +677,9 @@ US_Card ck_us_vsyncMenu = {0, 0, 0, 0, 0, &CK_US_VSyncMenuProc, 0, 0, 0};
 #ifdef WITH_RF_INTERP
 US_Card ck_us_smoothingMenu = {0, 0, 0, 0, 0, &CK_US_SmoothingMenuProc, 0, 0, 0};
 US_Card ck_us_cameraSmoothingMenu = {0, 0, 0, 0, 0, &CK_US_CameraSmoothingMenuProc, 0, 0, 0};
+US_Card ck_us_filterMenu = {0, 0, 0, 0, 0, &CK_US_FilterMenuProc, 0, 0, 0};
+US_Card ck_us_aspectModeMenu = {0, 0, 0, 0, 0, &CK_US_AspectModeMenuProc, 0, 0, 0};
+US_Card ck_us_pixelsMenu = {0, 0, 0, 0, 0, &CK_US_PixelsMenuProc, 0, 0, 0};
 #endif
 #endif
 #ifdef EXTRA_JOYSTICK_OPTIONS
@@ -667,6 +704,9 @@ US_CardItem ck_us_optionsMenuItems[] = {
 #ifdef WITH_RF_INTERP
 	{US_ITEM_Submenu, 0, IN_SC_O, "", US_Comm_None, &ck_us_smoothingMenu, 0, 0},
 	{US_ITEM_Submenu, 0, IN_SC_G, "", US_Comm_None, &ck_us_cameraSmoothingMenu, 0, 0},
+	{US_ITEM_Submenu, 0, IN_SC_L, "", US_Comm_None, &ck_us_filterMenu, 0, 0},
+	{US_ITEM_Submenu, 0, IN_SC_R, "", US_Comm_None, &ck_us_aspectModeMenu, 0, 0},
+	{US_ITEM_Submenu, 0, IN_SC_X, "", US_Comm_None, &ck_us_pixelsMenu, 0, 0},
 #endif
 #endif
 	{US_ITEM_Submenu, 0, IN_SC_P, "", US_Comm_None, &ck_us_modernControlsMenu, 0, 0},
@@ -1434,7 +1474,7 @@ void CK_US_SetJoystickName(US_CardItem *item, int joystick)
 #endif
 #ifdef EXTRA_GRAPHICS_OPTIONS
 #ifdef WITH_RF_INTERP
-#define MODERN_OPTION_NUMBER 11
+#define MODERN_OPTION_NUMBER 14
 #else
 #define MODERN_OPTION_NUMBER 9
 #endif
@@ -1460,6 +1500,12 @@ void CK_US_UpdateOptionsMenus(void)
 		static const char *smoothCaps[] = {"SMOOTHING (OFF)", "SMOOTHING (GRID)", "SMOOTHING (PIXEL)", "SMOOTHING (SUBPIXEL)"};
 		ck_us_optionsMenuItems[9].caption = smoothCaps[RFI_Enabled() ? RFI_GetMode() : RFI_Mode_Off];
 		ck_us_optionsMenuItems[10].caption = CK_Fix_Enabled(CK_FIX_CameraSmoothing) ? "CAMERA SMOOTHING (ON)" : "CAMERA SMOOTHING (OFF)";
+		static const char *filterCaps[] = {"FILTER (OFF)", "FILTER (SCANLINES)", "FILTER (CRT)", "FILTER (CURVED)", "FILTER (RGB)", "FILTER (SOFT)", "FILTER (AMBER)", "FILTER (GREEN)"};
+		static const char *aspectCaps[] = {"ASPECT (AUTO)", "ASPECT (4:3)", "ASPECT (AS-IS)", "ASPECT (16:10)", "ASPECT (16:9)", "ASPECT (FIT)"};
+		static const char *pixelsCaps[] = {"PIXELS (CRISP)", "PIXELS (LIGHT)", "PIXELS (LOW)", "PIXELS (MEDIUM)", "PIXELS (HIGH)"};
+		ck_us_optionsMenuItems[11].caption = filterCaps[VLF_GetFilter()];
+		ck_us_optionsMenuItems[12].caption = aspectCaps[vl_aspectMode];
+		ck_us_optionsMenuItems[13].caption = pixelsCaps[VLF_GetPixels()];
 	}
 #endif
 #endif

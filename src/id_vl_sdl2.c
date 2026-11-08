@@ -4,8 +4,12 @@
 #include "id_vl.h"
 #include "id_vl_private.h"
 #include "ck_cross.h"
+#ifdef WITH_RF_INTERP
+#include "id_vl_filter.h"
+#endif
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#include <emscripten/html5.h>
 /* Block (asyncify) until the next browser animation frame: vsync pacing. */
 /* Module.__inRaf is 1 from a rAF callback until the end of that task (the timeout queued
  * in the callback runs before any later yield resumes us): a draw made while it is set
@@ -45,6 +49,25 @@ static bool vl_sdl2_bilinearSupport = true;
 static void VL_SDL2_ResizeWindow()
 {
 	int realWinH, realWinW, curW, curH;
+#ifdef __EMSCRIPTEN__
+	/* With an explicit aspect mode the page lets the canvas fill the viewport (CSS) and the
+	 * engine letterboxes inside it, so keep the drawing buffer at the canvas's size (#101). */
+	if (vl_aspectMode != VL_Aspect_Auto)
+	{
+		double cw = 0, ch = 0;
+		emscripten_get_element_css_size("#canvas", &cw, &ch);
+		double dpr = emscripten_get_device_pixel_ratio();
+		if (dpr > 2) dpr = 2;
+		int ww = (int)(cw * dpr), wh = (int)(ch * dpr);
+		if (ww > 2560) { wh = wh * 2560 / ww; ww = 2560; }
+		if (ww >= 320 && wh >= 200)
+		{
+			SDL_GetWindowSize(vl_sdl2_window, &curW, &curH);
+			if (curW != ww || curH != wh)
+				SDL_SetWindowSize(vl_sdl2_window, ww, wh);
+		}
+	}
+#endif
 	SDL_GetRendererOutputSize(vl_sdl2_renderer, &realWinW, &realWinH);
 	VL_CalculateRenderRegions(realWinW, realWinH);
 
@@ -361,6 +384,10 @@ static void VL_SDL2_ScrollSurface(void *surface, int x, int y)
 	VL_SDL2_SurfaceToSelf(surface, dx, dy, sx, sy, w, h);
 }
 
+#ifdef WITH_RF_INTERP
+void VL_PresentARGB(const uint32_t *argb, int w, int h, const char *title);
+#endif
+
 static void VL_SDL2_Present(void *surface, int scrlX, int scrlY, bool singleBuffered)
 {
 	// TODO: Verify this is a VL_SurfaceUsage_FrontBuffer
@@ -371,6 +398,20 @@ static void VL_SDL2_Present(void *surface, int scrlX, int scrlY, bool singleBuff
 	SDL_Rect fullRect = {(Sint16)vl_fullRgn_x, (Sint16)vl_fullRgn_y, vl_fullRgn_w, vl_fullRgn_h};
 
 	SDL_BlitSurface(surf, &srcr, vl_sdl2_stagingSurface, 0);
+#ifdef WITH_RF_INTERP
+	if (VLF_Active())
+	{
+		/* Screen filters (#101): hand the 320x200 frame to the filtered 4x path. */
+		SDL_LockSurface(vl_sdl2_stagingSurface);
+		VL_PresentARGB((const uint32_t *)vl_sdl2_stagingSurface->pixels, VL_EGAVGA_GFX_WIDTH, VL_EGAVGA_GFX_HEIGHT, NULL);
+		SDL_UnlockSurface(vl_sdl2_stagingSurface);
+#ifdef __EMSCRIPTEN__
+		VL_WaitRAF();
+		CK_Cross_NoteYield();
+#endif
+		return;
+	}
+#endif
 	SDL_LockSurface(vl_sdl2_stagingSurface);
 	SDL_UpdateTexture(vl_sdl2_texture, 0, vl_sdl2_stagingSurface->pixels, vl_sdl2_stagingSurface->pitch);
 	SDL_UnlockSurface(vl_sdl2_stagingSurface);
@@ -511,6 +552,9 @@ void VL_PresentARGB(const uint32_t *argb, int w, int h, const char *title)
 	static SDL_Texture *tex;
 	static int tw, th;
 	VL_SDL2_ResizeWindow();
+	double pcf = VL_DebugNowS();
+	argb = VLF_Apply(argb, w, h, &w, &h); /* screen filters; identity when off (#101) */
+	vl_filterWorkS += VL_DebugNowS() - pcf;
 	if (!tex || tw != w || th != h)
 	{
 		if (tex) SDL_DestroyTexture(tex);
