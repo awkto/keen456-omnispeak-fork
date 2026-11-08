@@ -1,0 +1,6 @@
+// Native Android build of the keen456 Omnispeak fork (#102). Versions match the
+// Gradle wrapper (8.2.1) and the old DOSBox-X app in the keen456 repo.
+plugins {
+    id 'com.android.application' version '8.2.1' apply false
+    id 'org.jetbrains.kotlin.android' version '1.9.22' apply false
+}

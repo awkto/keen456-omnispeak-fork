@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- "Smooth" tells it apart from the WASM app and the DOSBox-X "Native" app,
+         which install side by side with this one. -->
+    <string name="app_name">Keen 4·5·6 Smooth</string>
+</resources>

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-feature android:glEsVersion="0x00020000" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.hardware.gamepad" android:required="false" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:hardwareAccelerated="true"
+        android:extractNativeLibs="true"
+        android:theme="@style/Theme.Keen456">
+
+        <!-- Episode picker: choose Keen 4/5/6, import Keen 5/6 game files. -->
+        <activity
+            android:name=".PickerActivity"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- The engine. Runs in its OWN process: SDL_main runs once per process
+             and the engine's Quit() calls exit(), so every play session gets a
+             fresh :game process and the picker survives it. -->
+        <activity
+            android:name=".KeenActivity"
+            android:exported="false"
+            android:process=":game"
+            android:label="@string/app_name"
+            android:screenOrientation="portrait"
+            android:launchMode="singleInstance"
+            android:preferMinimalPostProcessing="true"
+            android:resizeableActivity="false"
+            android:alwaysRetainTaskState="true"
+            android:configChanges="layoutDirection|locale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation">
+        </activity>
+    </application>
+
+</manifest>
