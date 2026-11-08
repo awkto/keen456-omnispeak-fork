@@ -26,7 +26,14 @@ Release after: <select id="pogohold"><option value="120">120 ms</option><option 
 Pixels: <select id="pixels"><option value="crisp">Crisp</option><option value="light">Smooth: light</option><option value="low">Smooth: low</option><option value="medium">Smooth: medium</option><option value="high">Smooth: high</option></select>
 Aspect: <select id="aspect"><option value="auto">4:3</option><option value="as-is">As-is (square pixels)</option><option value="16:10">16:10</option><option value="16:9">16:9</option><option value="fit">Fit window</option></select></div>
 <div id="btns"></div>
-<p style="font-size:.8em;opacity:.7">Click a button to start (this also enables audio). Saves and options persist in this browser.</p>
+<div id="own" style="display:none;font-size:.85em;line-height:1.6;border:1px solid #555;padding:.5em .8em;margin:.4em 0">
+<div id="owntitle"></div>
+<div style="opacity:.8">Keen 5 and 6 are commercial: bring your own copy. Pick the game folder, or the files <code>EGAGRAPH.CKn GAMEMAPS.CKn AUDIO.CKn</code>, or a <code>.zip</code> containing them (you can also drop them here). They stay in this browser (IndexedDB) and are never uploaded.</div>
+<button id="pickdir">Choose folder</button> <button id="pickfiles">Choose files / .zip</button> <button id="forget" style="display:none">Forget my files</button>
+<div id="ownmsg" style="margin-top:.3em"></div>
+<input type="file" id="indir" webkitdirectory multiple hidden><input type="file" id="infiles" multiple accept=".zip,.CK4,.CK5,.CK6,.ck4,.ck5,.ck6" hidden>
+</div>
+<p style="font-size:.8em;opacity:.7" id="startnote">Click a button to start (this also enables audio). Saves and options persist in this browser.</p>
 <div id="help"><b>Controls:</b> arrows move, Ctrl jump, Alt pogo (with Modern pogo: hold Alt for pogo + jump, let go to release both; a quick tap keeps the pogo on), Space fire, Enter status, Esc menu, F11 or the Fullscreen button for full screen.<br>
 Ctrl+W/T/N and Alt+Tab/Alt+F4 are reserved by the browser or OS and cannot be used in-game.</div>
 <p style="font-size:.75em;opacity:.6">Engine: keen456, a fork of <a style="color:#9cf" href="https://github.com/sulix/omnispeak">Omnispeak</a>, GPL-2 &middot; <a style="color:#9cf" href="omnispeak-src.tar.gz">source for this build</a> &middot; <a style="color:#9cf" href="LICENSE.txt">licence</a>. Commander Keen &copy; id Software.</p>
@@ -37,13 +44,92 @@ Ctrl+W/T/N and Alt+Tab/Alt+F4 are reserved by the browser or OS and cannot be us
 <script>
 const EPISODES = {4:"Keen 4", 5:"Keen 5", 6:"Keen 6"};
 const avail = (window.KEEN_EPISODES || [4,5,6]);
-for (const e of avail){const b=document.createElement('button');b.textContent=EPISODES[e];b.dataset.ep=e;b.onclick=()=>start(e);btns.appendChild(b);}
+// episodes.json (written by tools/build-wasm.sh): "full" = game data is in kN.data, "tables" = only the engine tables, ask for the player's files
+let CFG = {4:'full',5:'full',6:'full',versions:{}};
+const own = {};            // ep -> {files, ver} of the player's own files (tables-only episodes)
+let pickEp = 0;
+// ---- the player's own files, kept in IndexedDB ----
+const idbOpen=()=>new Promise((ok,err)=>{const r=indexedDB.open('keen-userfiles',1);r.onupgradeneeded=()=>r.result.createObjectStore('f');r.onsuccess=()=>ok(r.result);r.onerror=()=>err(r.error);});
+async function idb(mode,fn){const db=await idbOpen();return new Promise((ok,err)=>{const t=db.transaction('f',mode),q=fn(t.objectStore('f'));t.oncomplete=()=>{db.close();ok(q&&q.result);};t.onerror=t.onabort=()=>{db.close();err(t.error);};});}
+// validate by size against the sizes the engine tables describe; returns the version string ('1.4'/'1.5')
+function validate(ep,files){
+  for(const n of ['EGAGRAPH','GAMEMAPS','AUDIO']) if(!files[n]) throw new Error('missing '+n+'.CK'+ep);
+  if(files.GAMEMAPS.length<1000) throw new Error('GAMEMAPS.CK'+ep+' is too small');
+  const V=(CFG.versions||{})[ep]||{}, want=Object.keys(V);
+  for(const v of want) if(V[v].EGAGRAPH===files.EGAGRAPH.length&&V[v].AUDIO===files.AUDIO.length) return v;
+  throw new Error('these are not a supported Keen '+ep+' version (EGAGRAPH.CK'+ep+' is '+files.EGAGRAPH.length+' bytes, AUDIO.CK'+ep+' '+files.AUDIO.length+'; supported: '+
+    want.map(v=>'v'+v+' = '+V[v].EGAGRAPH+' / '+V[v].AUDIO).join(', ')+')');
+}
+async function inflateRaw(u8){const ds=new DecompressionStream('deflate-raw');const w=ds.writable.getWriter();w.write(u8);w.close();return new Uint8Array(await new Response(ds.readable).arrayBuffer());}
+async function unzip(file,want){ // minimal zip reader; returns {basename: Uint8Array} for entries accepted by want(basename)
+  const b=new Uint8Array(await file.arrayBuffer()),dv=new DataView(b.buffer),out={};
+  let e=-1; for(let i=b.length-22;i>=Math.max(0,b.length-65557);i--) if(dv.getUint32(i,true)===0x06054b50){e=i;break;}
+  if(e<0) throw new Error(file.name+' is not a zip file');
+  let p=dv.getUint32(e+16,true); const n=dv.getUint16(e+10,true);
+  for(let k=0;k<n&&dv.getUint32(p,true)===0x02014b50;k++){
+    const meth=dv.getUint16(p+10,true),cs=dv.getUint32(p+20,true),nl=dv.getUint16(p+28,true),el=dv.getUint16(p+30,true),cl=dv.getUint16(p+32,true),lho=dv.getUint32(p+42,true);
+    const name=new TextDecoder().decode(b.subarray(p+46,p+46+nl)).split('/').pop(); p+=46+nl+el+cl;
+    if(!want(name)) continue;
+    const ds=lho+30+dv.getUint16(lho+26,true)+dv.getUint16(lho+28,true), raw=b.subarray(ds,ds+cs);
+    if(meth===0) out[name]=raw.slice(); else if(meth===8) out[name]=await inflateRaw(raw); else throw new Error('unsupported zip compression in '+file.name);
+  }
+  return out;
+}
+async function collect(ep,fileList){
+  const re=new RegExp('^(egagraph|gamemaps|audio)\\.ck'+ep+'$','i'), want=n=>re.test(n), files={};
+  for(const f of fileList){
+    const base=f.name.split('/').pop();
+    if(/\.zip$/i.test(base)) { const z=await unzip(f,want); for(const k in z) files[k.split('.')[0].toUpperCase()]=z[k]; }
+    else if(want(base)) files[base.split('.')[0].toUpperCase()]=new Uint8Array(await f.arrayBuffer());
+  }
+  return files;
+}
+async function loadStored(ep){
+  try{const f=await idb('readonly',s=>s.get('ep'+ep)); if(f){const ver=validate(ep,f); own[ep]={files:f,ver};}}catch(e){delete own[ep];}
+}
+function ownStatus(){
+  for(const b of btns.children){const ep=b.dataset.ep; if(CFG[ep]==='tables') b.textContent=EPISODES[ep]+(own[ep]?' (your files)':' (load your files)');}
+  if(pickEp) forget.style.display=own[pickEp]?'':'none';
+}
+function openPicker(ep,msg){
+  pickEp=ep; own_.style.display='block';
+  owntitle.innerHTML='<b>'+EPISODES[ep]+'</b>'+(own[ep]?': your files are loaded (v'+own[ep].ver+')':': load your game files');
+  ownmsg.textContent=msg||''; ownStatus();
+}
+async function takeFiles(list){
+  const ep=pickEp; if(!ep) return;
+  try{
+    const files=await collect(ep,[...list]), ver=validate(ep,files);
+    await idb('readwrite',s=>s.put(files,'ep'+ep));
+    own[ep]={files,ver}; openPicker(ep,'OK: Keen '+ep+' v'+ver+' files stored in this browser. Click the '+EPISODES[ep]+' button to play.');
+  }catch(e){ownmsg.textContent='Not usable: '+e.message;}
+}
+async function startOrAsk(ep){
+  if(CFG[ep]!=='tables') return start(ep);
+  if(!own[ep]) await loadStored(ep);
+  if(own[ep]) return start(ep);
+  openPicker(ep,'Pick the files to continue.');
+}
+function mkButtons(){
+  for (const e of avail){const b=document.createElement('button');b.textContent=EPISODES[e];b.dataset.ep=e;b.onclick=()=>startOrAsk(e);btns.appendChild(b);}
+  const tb=avail.filter(e=>CFG[e]==='tables');
+  if(tb.length) startnote.textContent='Keen 4 shareware (v1.4) is included. '+tb.map(e=>EPISODES[e]).join(' and ')+' need your own game files (click to load them). Saves and options persist in this browser.';
+  const ep=ls('ep'); if(ep)for(const b of btns.children)if(b.dataset.ep===ep)b.style.outline='2px solid #4a4';
+  Promise.all(tb.map(loadStored)).then(ownStatus);
+  ownStatus();
+}
+const own_=document.getElementById('own');
+pickdir.onclick=()=>indir.click(); pickfiles.onclick=()=>infiles.click();
+indir.onchange=()=>takeFiles(indir.files); infiles.onchange=()=>takeFiles(infiles.files);
+forget.onclick=async()=>{await idb('readwrite',s=>s.delete('ep'+pickEp)); delete own[pickEp]; openPicker(pickEp,'Forgotten.');};
+own_.addEventListener('dragover',e=>e.preventDefault());
+own_.addEventListener('drop',e=>{e.preventDefault();takeFiles(e.dataTransfer.files);});
 const LS=window.localStorage||{getItem(){},setItem(){}};
 function ls(k,v){try{if(v===undefined)return LS.getItem('keen.'+k);LS.setItem('keen.'+k,v);}catch(e){}}
-{const m=ls('smooth'),c=ls('cam'),ep=ls('ep');
+{const m=ls('smooth'),c=ls('cam');
  if(m&&[...smooth.options].some(o=>o.value===m))smooth.value=m;
  if(c!==null&&c!==undefined)cam.checked=c==='1';
- if(ep)for(const b of btns.children)if(b.dataset.ep===ep)b.style.outline='2px solid #4a4';}
+}
 for(const id of ['filter','pixels','aspect','pogohold']){const el=document.getElementById(id),v=new URLSearchParams(location.search).get(id)||ls(id);
  if(v&&[...el.options].some(o=>o.value===v))el.value=v; el.onchange=()=>ls(id,el.value);}
 {const v=ls('mpogo'); if(v!==null&&v!==undefined)mpogo.checked=v==='1';}
@@ -54,6 +140,7 @@ fs.onclick=()=>{(document.fullscreenElement?document.exitFullscreen():stage.requ
 document.addEventListener('fullscreenchange',()=>canvas.focus());
 function setLoading(on,text,frac){loading.style.display=on?'flex':'none';if(text)ltext.textContent=text;if(frac!==undefined)bar.firstChild.style.width=(frac*100)+'%';}
 function loadScript(src){return new Promise((ok,err)=>{const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=()=>err(new Error(src));document.body.appendChild(s);});}
+fetch('episodes.json').then(r=>r.ok?r.json():null).catch(()=>null).then(j=>{if(j)CFG=j;mkButtons();});
 async function start(ep){
   ls('smooth',smooth.value); ls('cam',cam.checked?'1':'0'); ls('ep',String(ep));
   setLoading(true,'Loading Keen '+ep+'...',0);
@@ -96,7 +183,10 @@ async function start(ep){
       document.addEventListener('visibilitychange',()=>{if(document.hidden)sync();});
       window.addEventListener('pagehide',sync); });
   });
-  await loadScript('k'+ep+'.js');       // registers the data package into preRun
+  const tabs=(CFG[ep]==='tables'&&own[ep]) ? ((ep==6&&own[ep].ver==='1.5')?'k6e15':'k'+ep) : null; // Keen 6: v1.4 and v1.5 engine tables
+  if(tabs===null&&CFG[ep]==='tables'){setLoading(false);launcher.style.display='';stage.style.display='none';return openPicker(ep,'Files missing.');}
+  if(CFG[ep]==='tables') M.preRun.push(()=>{const FS=M.FS||window.FS; for(const n in own[ep].files) FS.writeFile('/'+n+'.CK'+ep,own[ep].files[n]);});
+  await loadScript((tabs||'k'+ep)+'.js');       // registers the data package into preRun
   stage.addEventListener('mousedown',()=>setTimeout(()=>canvas.focus(),0));
   window.addEventListener('focus',()=>canvas.focus());
   // keep the browser from acting on keys the game uses (scrolling, menu bar on Alt, F1 help, F3 find, ...)

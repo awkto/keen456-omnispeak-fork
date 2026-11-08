@@ -1,5 +1,7 @@
 # keen456-omnispeak-fork
 
+**Play it in your browser: <https://awkto.github.io/keen456-omnispeak-fork/>** (Keen 4 shareware is built in; for Keen 5 and 6 you load your own game files, which never leave your browser.)
+
 A fork of [Omnispeak](https://github.com/sulix/omnispeak) (the open-source reimplementation of
 Commander Keen 4, 5 and 6) that keeps the original game's behaviour bug-for-bug and adds smooth
 high-refresh presentation, optional fixes, a few quality-of-life features and a browser (WASM) build.
@@ -7,7 +9,10 @@ Default behaviour is the `vanilla` profile and stays tic-for-tic identical to th
 change is presentation-only or sits behind a named toggle.
 
 You need your own copies of the game files (Keen 4 v1.4 shareware is free; Keen 5 and 6 are
-commercial). No game data is in this repository.
+commercial). No game data is in this repository. The public web build (GitHub Pages, built by
+`.github/workflows/pages.yml`) bundles only the Keen 4 shareware; `tools/check-pages-artifact.sh`
+fails the build if any Keen 5/6 game file ends up in it. Build it locally with
+`TABLES_ONLY="5 6" tools/build-wasm.sh`.
 
 ## What is new compared to upstream Omnispeak
 
