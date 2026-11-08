@@ -431,7 +431,12 @@ static void VL_SDL2_Present(void *surface, int scrlX, int scrlY, bool singleBuff
 		SDL_RenderClear(vl_sdl2_renderer);
 
 		SDL_RenderSetViewport(vl_sdl2_renderer, 0);
-		SDL_RenderCopy(vl_sdl2_renderer, vl_sdl2_scaledTarget, 0, &fullRect);
+		/* #103: in a widescreen region only the pillarboxed part (the 320 frame and its
+		 * border) is copied; the bars stay black */
+		SDL_Rect srcPart = {0, 0, vl_integerWidth, vl_integerHeight};
+		VL_GameRectX(VL_EGAVGA_GFX_WIDTH, &srcPart.x, &srcPart.w);
+		VL_GameRectX(VL_EGAVGA_GFX_WIDTH, &fullRect.x, &fullRect.w);
+		SDL_RenderCopy(vl_sdl2_renderer, vl_sdl2_scaledTarget, &srcPart, &fullRect);
 	}
 	else
 	{
@@ -441,6 +446,17 @@ static void VL_SDL2_Present(void *surface, int scrlX, int scrlY, bool singleBuff
 		SDL_RenderClear(vl_sdl2_renderer);
 
 		SDL_RenderSetViewport(vl_sdl2_renderer, 0);
+		{
+			/* #103: black bars, the border only round the pillarboxed frame; renderRect is
+			 * relative to the viewport, so rebuild it for the narrowed one */
+			int fw = fullRect.w;
+			VL_GameRectX(VL_EGAVGA_GFX_WIDTH, &fullRect.x, &fullRect.w);
+			if (fullRect.w != fw && fw > 0)
+			{
+				renderRect.x = (int)((int64_t)vl_renderRgn_x * fullRect.w / fw);
+				renderRect.w = (int)((int64_t)vl_renderRgn_w * fullRect.w / fw);
+			}
+		}
 		SDL_RenderSetViewport(vl_sdl2_renderer, &fullRect);
 		SDL_SetRenderDrawColor(vl_sdl2_renderer,
 			VL_EGARGBColorTable[vl_emuegavgaadapter.bordercolor][0],
@@ -588,6 +604,7 @@ void VL_PresentARGB(const uint32_t *argb, int w, int h, const char *title)
 	SDL_SetRenderDrawColor(vl_sdl2_renderer, 0, 0, 0, 255);
 	SDL_RenderClear(vl_sdl2_renderer);
 	SDL_SetRenderDrawColor(vl_sdl2_renderer, bc[0], bc[1], bc[2], 255);
+	VL_GameRectX(h > 0 ? w * VL_EGAVGA_GFX_HEIGHT / h : VL_EGAVGA_GFX_WIDTH, &fullRect.x, &fullRect.w); /* #103 */
 	SDL_RenderFillRect(vl_sdl2_renderer, &fullRect);
 	SDL_RenderCopy(vl_sdl2_renderer, tex, 0, &dst);
 	double pc1 = VL_DebugNowS();

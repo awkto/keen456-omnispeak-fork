@@ -735,8 +735,14 @@ static void VL_SDL2GL_Present(void *surface, int scrlX, int scrlY, bool singleBu
 		id_glBindFramebufferEXT(GL_DRAW_FRAMEBUFFER_EXT, 0);
 		id_glBindFramebufferEXT(GL_READ_FRAMEBUFFER_EXT, vl_sdl2gl_framebufferObject);
 
-		id_glBlitFramebufferEXT(0, 0, vl_integerWidth, vl_integerHeight,
-			vl_fullRgn_x, realWinH - vl_fullRgn_y - vl_fullRgn_h, vl_fullRgn_x + vl_fullRgn_w, realWinH - vl_fullRgn_y,
+		/* #103: a 320-wide frame in a widescreen region: blit only its part (frame + border),
+		 * so the bars stay black */
+		int sx = 0, sw = vl_integerWidth, dx = vl_fullRgn_x, dw = vl_fullRgn_w;
+		int shownW = (vl_sdl2gl_argbFrame && vl_sdl2gl_argbH > 0) ? vl_sdl2gl_argbW * VL_EGAVGA_GFX_HEIGHT / vl_sdl2gl_argbH : VL_EGAVGA_GFX_WIDTH;
+		VL_GameRectX(shownW, &sx, &sw);
+		VL_GameRectX(shownW, &dx, &dw);
+		id_glBlitFramebufferEXT(sx, 0, sx + sw, vl_integerHeight,
+			dx, realWinH - vl_fullRgn_y - vl_fullRgn_h, dx + dw, realWinH - vl_fullRgn_y,
 			GL_COLOR_BUFFER_BIT,
 			GL_LINEAR);
 	}
