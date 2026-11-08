@@ -28,6 +28,10 @@ jobs:
         version: ${{ env.EMSDK_VERSION }}
         actions-cache-folder: emsdk-cache
 
+    - name: Pre-build the SDL2 port (once, with retries; parallel make would race the download)
+      run: |
+        for i in 1 2 3 4 5 6; do embuilder build sdl2 && exit 0; echo "retry $i"; sleep 30; done; exit 1
+
     - name: Fetch Keen 4 v1.4 shareware (freely redistributable)
       run: |
         export KEEN_DATA="$RUNNER_TEMP/keen-data"
