@@ -76,6 +76,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "ck_cross.h"
 #include "ck_fix.h"
 #include "rf_interp.h"
+#include "id_vl_filter.h"
 #include "ck_act.h"
 #include "ck_def.h"
 #include "ck_play.h"
@@ -708,8 +709,9 @@ static void Present(void)
 	lastPresent = t;
 	if (debugStats && t - statT0 > 1.0 && statN)
 	{
-		snprintf(title, sizeof(title), "Omnispeak interpolation [F12] %s | %.1f fps  frame %.2f ms (min %.2f max %.2f)  compose %.2f ms",
-			rfi_modeStrings[mode], 1000.0 * statN / statSum, statSum / statN, statMin, statMax, 1000.0 * composeSum / statN);
+		snprintf(title, sizeof(title), "Omnispeak interpolation [F12] %s | %.1f fps  frame %.2f ms (min %.2f max %.2f)  compose %.2f ms  filter %.2f ms",
+			rfi_modeStrings[mode], 1000.0 * statN / statSum, statSum / statN, statMin, statMax, 1000.0 * composeSum / statN, 1000.0 * vl_filterWorkS / statN);
+		vl_filterWorkS = 0;
 		composeSum = 0;
 		fprintf(stderr, "[interp] %s\n", title);
 		statT0 = t; statSum = 0; statN = 0; statMin = 1e9; statMax = 0;

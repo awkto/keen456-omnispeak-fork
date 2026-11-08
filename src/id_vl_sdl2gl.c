@@ -7,6 +7,9 @@
 #include "id_vl.h"
 #include "id_vl_private.h"
 #include "ck_cross.h"
+#ifdef WITH_RF_INTERP
+#include "id_vl_filter.h"
+#endif
 
 #define VL_SDL2GL_NUM_BUFFERS 2
 
@@ -564,6 +567,20 @@ static const uint32_t *vl_sdl2gl_argbFrame;
 static int vl_sdl2gl_argbW, vl_sdl2gl_argbH;
 static GLuint vl_sdl2gl_argbTexture;
 
+static void VL_SDL2GL_SetARGBFrame(const uint32_t *argb, int w, int h)
+{
+	/* screen filters (#101); identity when off */
+	argb = VLF_Apply(argb, w, h, &w, &h);
+	if (vl_sdl2gl_argbTexture && (w != vl_sdl2gl_argbW || h != vl_sdl2gl_argbH))
+	{
+		id_glDeleteTextures(1, &vl_sdl2gl_argbTexture);
+		vl_sdl2gl_argbTexture = 0;
+	}
+	vl_sdl2gl_argbFrame = argb;
+	vl_sdl2gl_argbW = w;
+	vl_sdl2gl_argbH = h;
+}
+
 static void VL_SDL2GL_DrawARGBFrame(void)
 {
 	if (!vl_sdl2gl_argbTexture)
@@ -595,7 +612,7 @@ static void VL_SDL2GL_Present(void *surface, int scrlX, int scrlY, bool singleBu
 
 	VL_CalculateRenderRegions(realWinW, realWinH);
 
-	if (vl_isAspectCorrected || vl_isIntegerScaled)
+	if (vl_isAspectCorrected || vl_isIntegerScaled || vl_aspectMode != VL_Aspect_Auto)
 	{
 		id_glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 		id_glClear(GL_COLOR_BUFFER_BIT);
@@ -674,8 +691,30 @@ static void VL_SDL2GL_Present(void *surface, int scrlX, int scrlY, bool singleBu
 
 	id_glDrawArrays(GL_QUADS, 0, 4);
 #ifdef WITH_RF_INTERP
+	bool ownFrame = false;
+	if (!vl_sdl2gl_argbFrame && VLF_Active())
+	{
+		/* Smoothing off but a screen filter on: expand the EGA surface to ARGB and filter it. */
+		static uint32_t frame[VL_EGAVGA_GFX_WIDTH * VL_EGAVGA_GFX_HEIGHT];
+		uint32_t pal[16];
+		for (int i = 0; i < 16; ++i)
+		{
+			const uint8_t *c = VL_EGARGBColorTable[vl_emuegavgaadapter.palette[i]];
+			pal[i] = 0xFF000000u | (c[0] << 16) | (c[1] << 8) | c[2];
+		}
+		const uint8_t *data = (const uint8_t *)surf->data;
+		for (int y = 0; y < VL_EGAVGA_GFX_HEIGHT; ++y)
+			for (int x = 0; x < VL_EGAVGA_GFX_WIDTH; ++x)
+				frame[y * VL_EGAVGA_GFX_WIDTH + x] = pal[data[(scrlY + y) * surf->w + scrlX + x] & 15];
+		double pcf = (double)SDL_GetPerformanceCounter() / (double)SDL_GetPerformanceFrequency();
+		VL_SDL2GL_SetARGBFrame(frame, VL_EGAVGA_GFX_WIDTH, VL_EGAVGA_GFX_HEIGHT);
+		vl_filterWorkS += (double)SDL_GetPerformanceCounter() / (double)SDL_GetPerformanceFrequency() - pcf;
+		ownFrame = true;
+	}
 	if (vl_sdl2gl_argbFrame)
 		VL_SDL2GL_DrawARGBFrame();
+	if (ownFrame)
+		vl_sdl2gl_argbFrame = NULL;
 #endif
 
 	id_glViewport(vl_fullRgn_x, realWinH - vl_fullRgn_y - vl_fullRgn_h, vl_fullRgn_w, vl_fullRgn_h);
@@ -806,14 +845,9 @@ VL_Backend *VL_Impl_GetBackend()
 // the render region in place of the screen surface, which is not flipped.
 void VL_PresentARGB(const uint32_t *argb, int w, int h, const char *title)
 {
-	if (vl_sdl2gl_argbTexture && (w != vl_sdl2gl_argbW || h != vl_sdl2gl_argbH))
-	{
-		id_glDeleteTextures(1, &vl_sdl2gl_argbTexture);
-		vl_sdl2gl_argbTexture = 0;
-	}
-	vl_sdl2gl_argbFrame = argb;
-	vl_sdl2gl_argbW = w;
-	vl_sdl2gl_argbH = h;
+	double pcf = (double)SDL_GetPerformanceCounter() / (double)SDL_GetPerformanceFrequency();
+	VL_SDL2GL_SetARGBFrame(argb, w, h);
+	vl_filterWorkS += (double)SDL_GetPerformanceCounter() / (double)SDL_GetPerformanceFrequency() - pcf;
 	if (title)
 		SDL_SetWindowTitle(vl_sdl2gl_window, title);
 	VL_SDL2GL_Present(vl_emuegavgaadapter.screen, 0, 0, true);

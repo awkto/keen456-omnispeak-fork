@@ -323,6 +323,7 @@ endif
 # Emscripten: SDL2 comes from the emscripten port, not sdl2-config
 ifeq ($(PLATFORM), emscripten)
 	SDL_CFLAGS = -sUSE_SDL=2 -DWITH_SDL
+	CXXFLAGS += -msimd128 # screen filter loops (id_vl_filter.c) auto-vectorise
 	SDL_LIBS = -sUSE_SDL=2
 	SDL_CONFIG =
 	LDFLAGS += -sASYNCIFY -sASYNCIFY_STACK_SIZE=262144 -sALLOW_MEMORY_GROWTH -sINITIAL_MEMORY=64MB \
@@ -369,17 +370,17 @@ ifeq ($(RENDERER), sdl1)
 endif
 
 ifeq ($(RENDERER), sdl2)
-	RENDER_OBJS = id_vl_sdl2.o id_sd_sdl.o id_in_sdl.o rf_interp.o
+	RENDER_OBJS = id_vl_sdl2.o id_sd_sdl.o id_in_sdl.o rf_interp.o id_vl_filter.o
 	CXXFLAGS += -DWITH_RF_INTERP
 endif
 
 ifeq ($(RENDERER), sdl2sw)
-	RENDER_OBJS = id_vl_sdl2.o id_sd_sdl.o id_in_sdl.o rf_interp.o
+	RENDER_OBJS = id_vl_sdl2.o id_sd_sdl.o id_in_sdl.o rf_interp.o id_vl_filter.o
 	CXXFLAGS += -DVL_SDL2_REQUEST_SOFTWARE -DWITH_RF_INTERP
 endif
 
 ifeq ($(RENDERER), sdl2gl)
-	RENDER_OBJS = id_vl_sdl2gl.o id_sd_sdl.o id_in_sdl.o rf_interp.o
+	RENDER_OBJS = id_vl_sdl2gl.o id_sd_sdl.o id_in_sdl.o rf_interp.o id_vl_filter.o
 	CXXFLAGS += -DWITH_RF_INTERP
 	LIBS += $(LIBGL)
 endif

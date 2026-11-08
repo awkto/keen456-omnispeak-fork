@@ -32,6 +32,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "ck_play.h"
 #ifdef WITH_RF_INTERP
 #include "rf_interp.h"
+#include "id_vl_filter.h"
 #endif
 #ifdef WITH_KEEN4
 #include "ck4_ep.h"
@@ -611,6 +612,10 @@ int main(int argc, char *argv[])
 	RFI_Mode interpMode = (RFI_Mode)CFG_GetConfigEnum("interpolation", rfi_modeStrings, RFI_Mode_Off);
 	if (CFG_ConfigExists("interpolation"))
 		CK_Fix_SetOverride("interpolation", interpMode != RFI_Mode_Off);
+	// Screen filters, aspect ratio and pixel softness (keen456-omnispeak-fork #101)
+	VLF_SetFilter((VLF_Filter)CFG_GetConfigEnum("filter", vlf_filterStrings, VLF_Filter_Off));
+	VLF_SetPixels((VLF_Pixels)CFG_GetConfigEnum("pixels", vlf_pixelsStrings, VLF_Pixels_Crisp));
+	vl_aspectMode = CFG_GetConfigEnum("aspectMode", vl_aspectStrings, VL_Aspect_Auto);
 #endif
 #ifdef CK_ENABLE_PLAYLOOP_DUMPER
 	const char *dumperFilename = NULL;
@@ -738,6 +743,25 @@ int main(int argc, char *argv[])
 		else if (!CK_Cross_strcasecmp(argv[i], "/NOINTERP"))
 		{
 			CK_Fix_SetOverride("interpolation", false);
+		}
+		else if (!CK_Cross_strcasecmp(argv[i], "/FILTER") || !CK_Cross_strcasecmp(argv[i], "/PIXELS") || !CK_Cross_strcasecmp(argv[i], "/ASPECT"))
+		{
+			// /FILTER off|scanlines|crt|curved|rgb|soft|amber|green, /PIXELS crisp|light|low|medium|high,
+			// /ASPECT auto|4:3|as-is|16:10|16:9|fit
+			char kind = (char)(argv[i][1] | 0x20);
+			const char **names = kind == 'f' ? vlf_filterStrings : kind == 'p' ? vlf_pixelsStrings : vl_aspectStrings;
+			if (i + 1 >= argc)
+				QuitF("%s needs a value", argv[i]);
+			++i;
+			int v = -1;
+			for (int m = 0; names[m]; ++m)
+				if (!CK_Cross_strcasecmp(argv[i], names[m]))
+					v = m;
+			if (v < 0)
+				QuitF("Unknown value '%s' for %s", argv[i], argv[i - 1]);
+			if (kind == 'f') VLF_SetFilter((VLF_Filter)v);
+			else if (kind == 'p') VLF_SetPixels((VLF_Pixels)v);
+			else vl_aspectMode = v;
 		}
 #endif
 #ifdef CK_ENABLE_PLAYLOOP_DUMPER

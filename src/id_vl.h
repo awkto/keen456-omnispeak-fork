@@ -28,6 +28,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 extern bool vl_screenFaded;
 extern bool vl_isFullScreen;
 extern bool vl_isAspectCorrected;
+/* Aspect ratio of the picture (keen456-omnispeak-fork #101). Auto keeps the old behaviour:
+ * 4:3 when vl_isAspectCorrected, else stretch to the window. As-is is square pixels (16:10)
+ * at whole-number scale; Fit stretches to the window. */
+typedef enum { VL_Aspect_Auto, VL_Aspect_4x3, VL_Aspect_AsIs, VL_Aspect_16x10, VL_Aspect_16x9, VL_Aspect_Fit, VL_Aspect_Count } VL_AspectMode;
+extern int vl_aspectMode;
+extern const char *vl_aspectStrings[];
 extern bool vl_isIntegerScaled;
 extern bool vl_hasOverscanBorder;
 extern int vl_swapInterval;
