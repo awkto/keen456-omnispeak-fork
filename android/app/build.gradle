@@ -1,0 +1,88 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+// SDL2 source, fetched by tools/build-android.sh into android/deps/SDL2 (the
+// pinned release; see SDL_VERSION there). Both halves come from the same tree:
+// the native library (jni/CMakeLists.txt) and its Java glue (sourceSets below),
+// so they can never drift apart.
+def sdlDir = file("${rootDir}/deps/SDL2")
+if (!file("${sdlDir}/CMakeLists.txt").exists()) {
+    throw new GradleException("SDL2 source missing at ${sdlDir}: run tools/build-android.sh (it fetches it)")
+}
+
+android {
+    // JNI symbol names in jni/keen_android.c derive from this namespace
+    // (Java_com_awkto_keen456_omni_Native_*): change both together.
+    namespace 'com.awkto.keen456.omni'
+    compileSdk 34
+    ndkVersion '27.2.12479018'
+
+    defaultConfig {
+        // Installs beside the old apps (com.awkto.keen456 WASM, .dx DOSBox-X).
+        applicationId 'com.awkto.keen456.omni'
+        minSdk 24
+        targetSdk 34
+        versionCode project.hasProperty('keenVersionCode') ? keenVersionCode.toInteger() : 1
+        versionName project.hasProperty('keenVersionName') ? keenVersionName : '0.1.0-dev'
+        ndk {
+            abiFilters 'arm64-v8a', 'x86_64'
+        }
+        externalNativeBuild {
+            cmake {
+                arguments "-DSDL2_SOURCE_DIR=${sdlDir}"
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path 'jni/CMakeLists.txt'
+            version '3.22.1'
+        }
+    }
+
+    sourceSets {
+        main {
+            java.srcDirs += "${sdlDir}/android-project/app/src/main/java"
+            // Omnispeak's per-episode tables (data/keen*), copied in by copyOmniTables.
+            assets.srcDirs += "${buildDir}/generated/omniAssets"
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    // GameSetup stamps the installed shareware with BuildConfig.VERSION_CODE.
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+}
+
+// The engine's data tables (EPISODE.CK4, ACTION.CK4, ...) are part of this repo
+// (data/keen4, keen5, keen6e14, keen6e15); the game copies the right set next to
+// the player's game files at launch (GameSetup.prepare).
+tasks.register('copyOmniTables', Copy) {
+    from("${rootDir}/../data") {
+        include 'keen*/*.CK?'
+    }
+    into "${buildDir}/generated/omniAssets/omni"
+}
+preBuild.dependsOn copyOmniTables
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.12.0'
+    implementation 'androidx.documentfile:documentfile:1.0.1'
+}

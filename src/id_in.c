@@ -743,6 +743,16 @@ int in_modernPogoHoldMs = 180;
 static enum { MP_Idle, MP_Held, MP_Gap, MP_Retract } in_mpState = MP_Idle;
 static uint32_t in_mpT0;
 
+static volatile bool in_touchPogo = false;
+static volatile bool in_touchPogoLatch = false; // a tap shorter than one poll still counts
+
+void IN_SetTouchPogo(bool down)
+{
+	if (down)
+		in_touchPogoLatch = true;
+	in_touchPogo = down;
+}
+
 static bool IN_ModernPogoActive(void)
 {
 	// Explicit demo check as well as the fix's own: demos must replay exactly like DOS.
@@ -884,11 +894,18 @@ void IN_ReadControls(int player, IN_ControlFrame *controls)
 
 			if (IN_GetKeyState(in_kbdControls.jump))
 				controls->jump = true;
+			// The touch pogo button (IN_SetTouchPogo) shares the modern state machine; it is
+			// never live in demos, so with no touch input this is the plain pogo key.
+			bool touchPogo = (in_touchPogo || in_touchPogoLatch) && in_demoState == IN_Demo_Off;
+			in_touchPogoLatch = false;
 			if (IN_ModernPogoActive())
-				IN_ModernPogo(IN_GetKeyState(in_kbdControls.pogo), &controls->jump, &controls->pogo);
+				IN_ModernPogo(IN_GetKeyState(in_kbdControls.pogo) || touchPogo, &controls->jump, &controls->pogo);
 			else
 			{
-				in_mpState = MP_Idle;
+				if (touchPogo || (in_mpState != MP_Idle && in_demoState == IN_Demo_Off))
+					IN_ModernPogo(touchPogo, &controls->jump, &controls->pogo);
+				else
+					in_mpState = MP_Idle;
 				if (IN_GetKeyState(in_kbdControls.pogo))
 					controls->pogo = true;
 			}

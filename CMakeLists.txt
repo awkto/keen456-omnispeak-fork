@@ -437,13 +437,24 @@ if (MSVC)
 	set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_DEBUG} /MT")
 endif()
 
-add_executable(omnispeak
+set(OMNISPEAK_ALL_SRCS
 	${OMNISPEAK_ID_SRCS}
 	${OMNISPEAK_EPISODE_SRCS}
 	${OMNISPEAK_CK_SRCS}
 	${OMNISPEAK_PLATFORM_SRCS}
 	${OMNISPEAK_OPL_SRCS}
 )
+
+if (ANDROID)
+	# keen456 Android build (android/, #102): SDL's Java glue loads the game as
+	# libmain.so and calls SDL_main. android/app/jni/CMakeLists.txt adds SDL2 and
+	# the JNI bridge, then includes this file.
+	add_library(omnispeak SHARED ${OMNISPEAK_ALL_SRCS} ${OMNISPEAK_ANDROID_SRCS})
+	set_target_properties(omnispeak PROPERTIES OUTPUT_NAME main)
+	set_source_files_properties(src/ck_main.c PROPERTIES COMPILE_DEFINITIONS main=SDL_main)
+else ()
+	add_executable(omnispeak ${OMNISPEAK_ALL_SRCS})
+endif ()
 
 if (NOT BUILDASCPP)
 	set_property(TARGET omnispeak PROPERTY C_STANDARD 99)

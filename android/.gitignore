@@ -1,0 +1,9 @@
+# Build outputs and fetched dependencies (tools/build-android.sh)
+.gradle/
+build/
+app/build/
+app/.cxx/
+local.properties
+deps/
+# Keen 4 shareware, fetched at build time; never commit game data
+app/src/main/assets/game/

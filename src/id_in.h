@@ -258,6 +258,11 @@ extern IN_DemoMode in_demoState;
 // Modern pogo (keen456-decomp #100): see IN_ReadControls. The auto-retract hold time in
 // milliseconds (0 = off, tap-only); the on/off switch is the 'modern-controls' fix.
 extern int in_modernPogoHoldMs;
+// Touch front-ends (Android, keen456-omnispeak-fork #102): an on-screen pogo button that
+// always uses the modern pogo logic (super-bounce + auto-retract), whatever the
+// 'modern-controls' fix says for the keyboard. Never active in demos. Safe to call from
+// another thread (a single flag, read once per IN_ReadControls).
+void IN_SetTouchPogo(bool down);
 extern IN_ControlType in_controlType;
 extern IN_ControlType in_backupControlType;
 
