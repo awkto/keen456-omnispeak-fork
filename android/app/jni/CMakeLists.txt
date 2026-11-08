@@ -2,7 +2,7 @@
 # Android native build (#102): SDL2 from source (as SDL's android-project
 # template does) plus the engine as libmain.so, built by the repo's own
 # CMakeLists.txt with ANDROID set.
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.13) # CMP0079: link the subdirectory target from here
 project(keen456omni C)
 
 if (NOT SDL2_SOURCE_DIR OR NOT EXISTS "${SDL2_SOURCE_DIR}/CMakeLists.txt")

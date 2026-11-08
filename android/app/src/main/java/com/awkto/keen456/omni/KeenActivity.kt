@@ -100,9 +100,14 @@ class KeenActivity : SDLActivity() {
         if (overlay?.panelTop != gameH.toFloat()) overlay?.panelTop = gameH.toFloat()
     }
 
-    /** Portrait by design (game on top, controls below), whatever SDL asks for. */
+    /**
+     * Portrait by design (game on top, controls below), whatever SDL asks for.
+     * USER_PORTRAIT, not PORTRAIT: SDLSurface.surfaceChanged refuses ("Skip ..
+     * Surface is not ready") a wider-than-tall surface while PORTRAIT or
+     * SENSOR_PORTRAIT is requested, and our 4:3 game pane is exactly that.
+     */
     override fun setOrientationBis(w: Int, h: Int, resizable: Boolean, hint: String?) {
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

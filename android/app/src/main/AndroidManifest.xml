@@ -33,7 +33,7 @@
             android:exported="false"
             android:process=":game"
             android:label="@string/app_name"
-            android:screenOrientation="portrait"
+            android:screenOrientation="userPortrait"
             android:launchMode="singleInstance"
             android:preferMinimalPostProcessing="true"
             android:resizeableActivity="false"
