@@ -181,10 +181,14 @@ object Settings {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(dark)
             addView(bar)
-            addView(ScrollView(ctx).apply { setBackgroundColor(dark); addView(col) })
+            addView(ScrollView(ctx).apply { setBackgroundColor(dark); addView(col) },
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         }
         dlg = AlertDialog.Builder(ctx).setView(root).create()
         dlg.window?.setBackgroundDrawable(ColorDrawable(dark))
         dlg.show()
+        // A fixed size inside the screen, so the list scrolls instead of running off the bottom.
+        val dm = ctx.resources.displayMetrics
+        dlg.window?.setLayout((dm.widthPixels * 0.92f).toInt(), (dm.heightPixels * 0.85f).toInt())
     }
 }
