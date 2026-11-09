@@ -107,6 +107,13 @@ int RF_ViewWidth(void);       // pixels the game view spans: 320, or wider with 
 int RF_WideViewLeft(int camXUnit, int viewWPx, int bandCamXUnit, int *bandLUnit, int *bandRUnit);
 int RF_ClampViewTop(int camYUnit, int bandCamYUnit); // presentation: keep a displayed camera inside the scroll blocks
 int RF_DisplayTileAt(int tileX, int tileY, int plane); // presentation: animated frame even outside the port
+/* keen456-omnispeak-fork #104: X-ray, display only (the 'xray' fix, off in demos and dumps). */
+extern bool rf_xrayAllowToggle; // /XRAY given: F10+H toggles without debug mode
+bool RF_XrayOn(void);          // what the current frame is drawn with
+bool RF_IsXrayTile(int tile);  // fore tile drawn over sprites with no collision: a hidden passage
+int RF_XrayTint(int colour);   // the cyan shade the 16-colour path tints an X-ray pixel with
+void RF_SetXray(bool on);      // main thread; takes effect at the next RF_Refresh
+void RF_ToggleXray(void);      // any thread (touch button); applied at the next RF_Refresh
 /*** Used for dumper (and, partially, for saved games compatibility) ***/
 RF_SpriteDrawEntry *RF_ConvertSpriteArray16BitOffsetToPtr(uint16_t drawEntryoffset);
 uint16_t RF_ConvertSpriteArrayPtrTo16BitOffset(RF_SpriteDrawEntry *drawEntry);

@@ -22,7 +22,7 @@ import kotlin.math.roundToInt
  *     ┌───────────────────────┐
  *     │        game pane      │   SDL surface, sized by KeenActivity
  *     ├───────────────────────┤
- *     │                  Y  N │
+ *     │ XR               Y  N │
  *     │            SHOOT POGO │
  *     │  (stick)              │
  *     │              JUMP     │
@@ -36,6 +36,7 @@ import kotlin.math.roundToInt
  *   POGO  -> Native.nativeSetTouchPogo: the engine's modern pogo (super-bounce
  *            + auto-retract), the same logic /MODERNCONTROLS gives Alt
  *   ESC / ⏎ / Y / N -> the keys, for menus and prompts
+ *   XR    -> Native.toggleXray: X-ray on/off (display only, hidden passages see-through)
  */
 class TouchOverlayView(context: Context) : View(context) {
 
@@ -98,6 +99,7 @@ class TouchOverlayView(context: Context) : View(context) {
         controls += Control("jump", "JUMP", intArrayOf(KeyEvent.KEYCODE_CTRL_LEFT), jumpGreen, ink, true, 0.7f)
         controls += Control("ny", "Y", intArrayOf(KeyEvent.KEYCODE_Y), btnBg, gold, false)
         controls += Control("nn", "N", intArrayOf(KeyEvent.KEYCODE_N), btnBg, gold, false)
+        controls += Control("xray", "XR", intArrayOf(), btnBg, teal, false, 0.8f)
         controls += Control("gear", "⚙", intArrayOf(), btnBg, textCol, false)
         controls += Control("esc", "ESC", intArrayOf(KeyEvent.KEYCODE_ESCAPE), btnBg, textCol, false, 0.8f)
         controls += Control("kbd", "⌨", intArrayOf(), btnBg, textCol, false)
@@ -122,6 +124,8 @@ class TouchOverlayView(context: Context) : View(context) {
         val nY = top + pad
         byId("nn").rect.set(w - pad - nW, nY, w - pad, nY + nH)
         byId("ny").rect.set(w - pad - nW * 2f - gap, nY, w - pad - nW - gap, nY + nH)
+        // XR (X-ray toggle) at the top-left, same size as Y/N.
+        byId("xray").rect.set(pad, nY, pad + nW, nY + nH)
 
         // Bottom row, clear of the gesture bar.
         val menu = listOf("gear", "esc", "kbd", "enter")
@@ -235,6 +239,7 @@ class TouchOverlayView(context: Context) : View(context) {
                 "gear" -> { onOpenSettings?.invoke(); return true }
                 "kbd" -> { onToggleKeyboard?.invoke(); return true }
                 "pogo" -> Native.setTouchPogo(true)
+                "xray" -> Native.toggleXray()
             }
             pointerControl[pointerId] = c
             c.pressed = true

@@ -32,6 +32,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "ck_config.h"
 #include "ck_def.h"
 #include "ck_ep.h"
+#include "ck_fix.h"
 #include "ck_game.h"
 
 #include "ck_act.h"
@@ -900,6 +901,19 @@ void CK_WallDebug()
 	RF_Reposition(rf_scrollXUnit, rf_scrollYUnit);
 }
 
+// keen456-omnispeak-fork #104: F10+H toggles X-ray (display only). Works in debug mode, and
+// without it when /XRAY was given (the web launcher's checkbox).
+static void CK_XrayKey(void)
+{
+	bool on = !CK_Fix_Enabled(CK_FIX_Xray);
+	RF_SetXray(on);
+	VL_FixRefreshBuffer();
+	US_CenterWindow(18, 3);
+	US_PrintCentered(on ? "X-ray ON" : "X-ray OFF");
+	VH_UpdateScreen();
+	IN_WaitButton();
+}
+
 bool CK_DebugKeys()
 {
 	// Border colour
@@ -1023,6 +1037,13 @@ bool CK_DebugKeys()
 
 		VH_UpdateScreen();
 		IN_WaitButton();
+		return true;
+	}
+
+	// X-ray (#104)
+	if (IN_GetKeyState(IN_SC_H) && game_in_progress)
+	{
+		CK_XrayKey();
 		return true;
 	}
 
@@ -1332,6 +1353,13 @@ void CK_CheckKeys()
 		if (ck_debugActive && CK_DebugKeys())
 		{
 			RF_ClockDiscontinuity(); // keen456-decomp #84 F1
+			RF_ForceRefresh();
+			SD_SetLastTimeCount(SD_GetTimeCount());
+		}
+		else if (!ck_debugActive && rf_xrayAllowToggle && IN_GetKeyState(IN_SC_H) && game_in_progress)
+		{
+			CK_XrayKey(); // #104: /XRAY lets F10+H through without debug mode
+			RF_ClockDiscontinuity();
 			RF_ForceRefresh();
 			SD_SetLastTimeCount(SD_GetTimeCount());
 		}

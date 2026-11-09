@@ -136,6 +136,14 @@ static uint8_t layerBack[LAYER_W * LAYER_H], layerFore[LAYER_W * LAYER_H];
 static uint8_t out8[OUT_MAX_W * OUT_H];
 static uint32_t out32[OUT_MAX_W * OUT_H];
 static uint8_t out24[OUT_MAX_W * OUT_H * 3];
+/* keen456-omnispeak-fork #104: X-ray. Where a hidden-passage tile (RF_IsXrayTile) would cover the
+ * picture, out8 keeps what is beneath it (background, sprites below the fore layer) and outX holds
+ * XRAY_PX | the tile's colour; the palette expansion blends the two and adds a faint tint. A sprite
+ * drawn over the fore layer clears outX. outX is only read while xrayFrame is set. */
+#define XRAY_PX 0x10
+#define XRAY_LAYER 0x20 /* layerFore: XRAY_LAYER | colour marks a see-through pixel (KEY is 0xFF) */
+static uint8_t outX[OUT_MAX_W * OUT_H];
+static bool xrayFrame;
 /* #103: width of the frame being composed (OUT_W) and where the vanilla 320-px camera window
  * lies in it (game pixels from its left edge; 0 when not wide). */
 static int outW = 320 * S, viewW = 320, viewOffX;
@@ -370,11 +378,11 @@ static inline int Lerp(int a, int b, double t)
 	return a + (int)floor((double)(b - a) * t + 0.5);
 }
 
-static long layersSim = -1; static int layersTX, layersTY;
+static long layersSim = -1; static int layersTX, layersTY; static bool layersXray;
 static void BuildLayers(int originTX, int originTY)
 {
-	if (layersSim == simFrame && layersTX == originTX && layersTY == originTY) return;
-	layersSim = simFrame; layersTX = originTX; layersTY = originTY;
+	if (layersSim == simFrame && layersTX == originTX && layersTY == originTY && layersXray == xrayFrame) return;
+	layersSim = simFrame; layersTX = originTX; layersTY = originTY; layersXray = xrayFrame;
 	int mw = CA_GetMapWidth(), mh = CA_GetMapHeight();
 	memset(layerBack, 0, sizeof(layerBack));
 	memset(layerFore, KEY, sizeof(layerFore));
@@ -391,6 +399,7 @@ static void BuildLayers(int originTX, int originTY)
 			uint8_t *m = (uint8_t *)CA_GetGrChunk(ca_gfxInfoE.offTiles16m, fg, "Tile16m", false);
 			if (!m) continue;
 			bool pri = (TI_ForeMisc(fg) & 0x80) != 0;
+			bool xr = xrayFrame && RF_IsXrayTile(fg); /* #104: only in the fore layer, see-through */
 			for (int y = 0; y < 16; ++y)
 				for (int x = 0; x < 16; ++x)
 				{
@@ -399,6 +408,7 @@ static void BuildLayers(int originTX, int originTY)
 					int px = ((m[off + 128] & bit) ? 8 : 0) | ((m[off + 96] & bit) ? 4 : 0) |
 						((m[off + 64] & bit) ? 2 : 0) | ((m[off + 32] & bit) ? 1 : 0);
 					int di = (ty * 16 + y) * LAYER_W + tx * 16 + x;
+					if (xr) { layerFore[di] = XRAY_LAYER | px; continue; }
 					layerBack[di] = px;
 					if (pri) layerFore[di] = px;
 				}
@@ -427,8 +437,20 @@ static void BlitLayer(const uint8_t *layer, int offX, int offY, bool keyed)
 		const uint8_t *row = layer + ly * LAYER_W;
 		if (!keyed)
 			for (int x = 0; x < OUT_W; ++x) { if (lxTab[x] >= 0) dst[x] = row[lxTab[x]]; }
-		else
+		else if (!xrayFrame)
 			for (int x = 0; x < OUT_W; ++x) { if (lxTab[x] >= 0 && row[lxTab[x]] != KEY) dst[x] = row[lxTab[x]]; }
+		else
+		{
+			uint8_t *dx = outX + y * OUT_W;
+			for (int x = 0; x < OUT_W; ++x)
+			{
+				if (lxTab[x] < 0) continue;
+				uint8_t v = row[lxTab[x]];
+				if (v == KEY) continue;
+				if (v & XRAY_LAYER) dx[x] = XRAY_PX | (v & 15);
+				else dst[x] = v;
+			}
+		}
 	}
 }
 
@@ -454,7 +476,10 @@ static void BlitSprite(RF_SpriteDrawEntry *sde, int ox, int oy)
 				((d[off + 2 * plane] & bit) ? 2 : 0) | ((d[off + plane] & bit) ? 1 : 0));
 			for (int yy = CK_Cross_max(y0, 0); yy < CK_Cross_min(y0 + S, OUT_H); ++yy)
 				for (int xx = CK_Cross_max(x0, 0); xx < CK_Cross_min(x0 + S, OUT_W); ++xx)
+				{
 					out8[yy * OUT_W + xx] = px;
+					outX[yy * OUT_W + xx] = 0; /* #104: drawn over the fore layer */
+				}
 		}
 	}
 }
@@ -615,6 +640,9 @@ static void Compose(double alpha)
 			platSde = p;
 		}
 	}
+	xrayFrame = RF_XrayOn(); /* #104 */
+	if (xrayFrame)
+		memset(outX, 0, (size_t)OUT_W * OUT_H);
 	BuildLayers(originTX, originTY);
 	BlitLayer(layerBack, offX, offY, false);
 	for (int z = 0; z < RF_NUM_SPRITE_Z_LAYERS; ++z)
@@ -684,9 +712,9 @@ static void Compose(double alpha)
 	int bx1 = CK_Cross_max(0, CK_Cross_min(OUT_W, (bandR - vx) * S / 16));
 	for (int y = 0; y < OUT_H; ++y)
 	{
-		uint8_t *row = out8 + y * OUT_W;
-		if (bx0 > 0) memset(row, 0, bx0);
-		if (bx1 < OUT_W) memset(row + bx1, 0, OUT_W - bx1);
+		uint8_t *row = out8 + y * OUT_W, *rowX = outX + y * OUT_W;
+		if (bx0 > 0) { memset(row, 0, bx0); memset(rowX, 0, bx0); }
+		if (bx1 < OUT_W) { memset(row + bx1, 0, OUT_W - bx1); memset(rowX + bx1, 0, OUT_W - bx1); }
 	}
 	if (hud)
 	{
@@ -716,11 +744,52 @@ static void OverlayVanilla(int sx, int sy)
 			if (ox < 0 || ox + S > OUT_W) continue;
 			if (sbRow && ((ox + S > sbX0 && ox < sbX1) || (ox + S > vbX0 && ox < vbX1))) continue;
 			uint8_t c = (uint8_t)(VL_SurfacePGet(screen, sx + x, sy + y) & 15);
+			if (xrayFrame && outX[oy * OUT_W + ox])
+			{
+				/* #104: the vanilla screen has the dithered X-ray there (RF_RenderTile16m): what is
+				 * beneath, the tile, or its tinted colour. Keep the blend unless something else
+				 * (a dialog) was drawn over it. */
+				int fg = outX[oy * OUT_W + ox] & 15;
+				if (c == dst[ox] || c == fg || c == RF_XrayTint(fg))
+					continue;
+				for (int i = 0; i < S; ++i) outX[oy * OUT_W + ox + i] = 0;
+			}
 			for (int i = 0; i < S; ++i) dst[ox + i] = c;
 		}
 		for (int i = 1; i < S; ++i)
+		{
 			memcpy(out8 + (oy + i) * OUT_W, dst, OUT_W);
+			if (xrayFrame)
+				memcpy(outX + (oy + i) * OUT_W, outX + oy * OUT_W, OUT_W);
+		}
 	}
+}
+
+/* #104: out8 (+ outX) -> out32 through the 16-colour palette pal. An X-ray pixel is half what is
+ * beneath and half the tile, pulled a fifth of the way to cyan. */
+static void ExpandOut(const uint32_t *pal)
+{
+	if (!xrayFrame)
+	{
+		for (int i = 0; i < OUT_W * OUT_H; ++i)
+			out32[i] = pal[out8[i] & 15];
+		return;
+	}
+	uint32_t mix[16][16]; /* [tile][beneath] */
+	for (int f = 0; f < 16; ++f)
+		for (int u = 0; u < 16; ++u)
+		{
+			uint32_t r = 0xFF000000u;
+			for (int sh = 0; sh <= 16; sh += 8)
+			{
+				int a = (pal[f] >> sh) & 0xFF, b = (pal[u] >> sh) & 0xFF;
+				int t = (sh == 16) ? 0x00 : 0xFF; /* cyan */
+				r |= (uint32_t)(((a + b) * 2 + t * 1) / 5) << sh;
+			}
+			mix[f][u] = r;
+		}
+	for (int i = 0; i < OUT_W * OUT_H; ++i)
+		out32[i] = outX[i] ? mix[outX[i] & 15][out8[i] & 15] : pal[out8[i] & 15];
 }
 
 static void ExpandPalette(void)
@@ -731,8 +800,7 @@ static void ExpandPalette(void)
 		const uint8_t *c = VL_EGARGBColorTable[vl_emuegavgaadapter.palette[i]];
 		pal[i] = 0xFF000000u | (c[0] << 16) | (c[1] << 8) | c[2];
 	}
-	for (int i = 0; i < OUT_W * OUT_H; ++i)
-		out32[i] = pal[out8[i] & 15];
+	ExpandOut(pal);
 }
 
 void RFI_WideSceneEnd(void)
@@ -826,9 +894,10 @@ static void Present(void)
 		LogPresent(vnow);
 		if (dispFrame >= capSkip)
 		{
+			ExpandOut(pal);
 			for (int i = 0; i < OUT_W * OUT_H; ++i)
 			{
-				uint32_t c = pal[out8[i] & 15];
+				uint32_t c = out32[i];
 				out24[i * 3] = c >> 16; out24[i * 3 + 1] = c >> 8; out24[i * 3 + 2] = c;
 			}
 			fwrite(out24, 1, (size_t)OUT_W * OUT_H * 3, capFile);
@@ -849,8 +918,7 @@ static void Present(void)
 		return;
 	}
 	double e0 = Now();
-	for (int i = 0; i < OUT_W * OUT_H; ++i)
-		out32[i] = pal[out8[i] & 15];
+	ExpandOut(pal);
 
 	double t = Now();
 	double expandS = t - e0;
