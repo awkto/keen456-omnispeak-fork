@@ -72,6 +72,7 @@ class KeenActivity : SDLActivity() {
         requestFastestDisplayMode()
 
         overlay = TouchOverlayView(this).also { ov ->
+            ov.xrayOn = Settings.xrayAtStart(Settings.prefs(this))
             ov.onOpenSettings = { Settings.show(this, inGame = true) { applySystemBars() } }
             ov.onToggleKeyboard = {
                 if (KeenGlue.keyboardShown()) KeenGlue.hideKeyboard() else KeenGlue.showKeyboard()

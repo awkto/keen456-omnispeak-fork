@@ -46,11 +46,14 @@ dev host. Release signing is not set up yet (debug APK only).
   `EGAGRAPH.CK6`. ⚙ Settings.
 - **KeenActivity** (an `SDLActivity`, own `:game` process) runs the engine with
   `/EPISODE n /GAMEPATH <game dir> /USERPATH <save dir>` plus the settings; by default
-  `/PROFILE enhanced /INTERP subpixel /MODERNCONTROLS /POGOHOLD 180 /VSYNC`.
+  `/PROFILE enhanced /INTERP subpixel /MODERNCONTROLS /POGOHOLD 180 /FILTER off /PIXELS crisp
+  /ASPECT 4:3 /NOXRAY /VSYNC`. Options with no switch are written into `OMNISPK.CFG` before
+  launch (`ck_quickSaveConfirm`, from the QuickSave confirmation setting).
   Before launch, `GameSetup.prepare` copies the matching table set next to the game files.
 - Storage (external app files dir, reachable over USB): `game/keen<n>/` data,
   `save/keen<n>/` savegames and `omnispeak.cfg` (imports never touch saves).
-- Display: portrait. SDL's surface is sized to a 4:3 pane at the top; the engine fills it
+- Display: portrait only (both activities are locked to portrait; there is no landscape
+  layout). SDL's surface is sized to a 4:3 pane at the top; the engine fills it
   through the SDL2 GLES renderer with vsync; the touch overlay owns the rest of the screen.
   The activity asks for the panel's fastest refresh mode.
 
@@ -58,11 +61,16 @@ dev host. Release signing is not set up yet (debug APK only).
 
 Stick = arrow keys (8-way) · JUMP = Ctrl · SHOOT = Space · POGO = the engine's modern pogo
 (`IN_SetTouchPogo` in `src/id_in.c`: pogo, then jump ~30 ms later while held for the
-super-bounce; holding longer than the retract time retracts it on release) · ESC, ⏎, Y, N as
-labelled · ⌨ soft keyboard (save names) · ⚙ settings · Back = Esc. A hardware keyboard or
-gamepad works as on desktop.
+super-bounce; holding longer than the retract time retracts it on release) · XR = X-ray on/off
+(lit while on) · 💾 = SAVE / LOAD popup: QuickSave (F5) / QuickLoad (F9), no Y/N prompt unless
+turned on in settings · ESC, ⏎, Y, N as labelled · ⌨ soft keyboard (save names) · ⚙ settings ·
+Back = Esc. A hardware keyboard or gamepad works as on desktop.
+
+Settings (⚙, picker or in game; applied at the next episode start): smoothing, screen filter,
+pixels, camera smoothing, profile, pogo retract, X-ray at start, QuickSave confirmation,
+hardware-keyboard Alt, fullscreen.
 
 ## Not done yet
 
-Release signing, settings parity with the DOSBox-X app (save sync, screen filters),
-landscape layout, gamepad mapping UI, background/resume testing on devices.
+Release signing, save sync (the DOSBox-X app's Sync tab), a turbo/FF button (no engine
+counterpart), gamepad mapping UI, background/resume testing on devices. Landscape is not planned.

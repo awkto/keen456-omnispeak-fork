@@ -26,8 +26,13 @@ import kotlin.math.roundToInt
  *     │            SHOOT POGO │
  *     │  (stick)              │
  *     │              JUMP     │
- *     │   ⚙   ESC   ⌨   ⏎    │
+ *     │  ⚙  ESC  💾  ⌨  ⏎     │
  *     └───────────────────────┘
+ *
+ * Portrait only (#102): the activity is locked to portrait, so there is no
+ * landscape layout. The 💾 pill opens a SAVE / LOAD popup (as in the DOSBox-X
+ * and web apps); here they tap the engine's QuickSave (F5) / QuickLoad (F9).
+ * The DOSBox-X app's FF (turbo) pill has no counterpart in this engine.
  *
  * One View owns every control and every pointer (two thumbs at once need a
  * single hit-tester). Buttons press plain SDL keys:
@@ -36,7 +41,9 @@ import kotlin.math.roundToInt
  *   POGO  -> Native.nativeSetTouchPogo: the engine's modern pogo (super-bounce
  *            + auto-retract), the same logic /MODERNCONTROLS gives Alt
  *   ESC / ⏎ / Y / N -> the keys, for menus and prompts
- *   XR    -> Native.toggleXray: X-ray on/off (display only, hidden passages see-through)
+ *   XR    -> Native.toggleXray: X-ray on/off (display only, hidden passages see-through);
+ *            the pill is lit (teal) while X-ray is on
+ *   💾    -> popup: SAVE = F5 (QuickSave), LOAD = F9 (QuickLoad)
  */
 class TouchOverlayView(context: Context) : View(context) {
 
@@ -63,6 +70,8 @@ class TouchOverlayView(context: Context) : View(context) {
     private val btnBg = Color.parseColor("#18304f")
     private val stickBg = Color.parseColor("#0a1426")
     private val ink = Color.parseColor("#14110a")
+    private val green = Color.parseColor("#6ee0a0")
+    private val greenBg = Color.parseColor("#143a2f")
 
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = border }
@@ -76,6 +85,18 @@ class TouchOverlayView(context: Context) : View(context) {
 
     var onOpenSettings: (() -> Unit)? = null
     var onToggleKeyboard: (() -> Unit)? = null
+
+    /**
+     * Whether X-ray is on, as far as this view knows (seeded from the start
+     * setting; flipped by XR). Only drives the XR pill's look.
+     */
+    var xrayOn = false
+        set(v) { field = v; invalidate() }
+
+    // Save/Load popup (the 💾 pill), drawn above the controls while open.
+    private var saveLoadOpen = false
+    private val popupSave = RectF()
+    private val popupLoad = RectF()
 
     private var stickCx = 0f
     private var stickCy = 0f
@@ -102,6 +123,7 @@ class TouchOverlayView(context: Context) : View(context) {
         controls += Control("xray", "XR", intArrayOf(), btnBg, teal, false, 0.8f)
         controls += Control("gear", "⚙", intArrayOf(), btnBg, textCol, false)
         controls += Control("esc", "ESC", intArrayOf(KeyEvent.KEYCODE_ESCAPE), btnBg, textCol, false, 0.8f)
+        controls += Control("saveload", "💾", intArrayOf(), greenBg, green, false)
         controls += Control("kbd", "⌨", intArrayOf(), btnBg, textCol, false)
         controls += Control("enter", "⏎", intArrayOf(KeyEvent.KEYCODE_ENTER), btnBg, textCol, false)
     }
@@ -127,16 +149,24 @@ class TouchOverlayView(context: Context) : View(context) {
         // XR (X-ray toggle) at the top-left, same size as Y/N.
         byId("xray").rect.set(pad, nY, pad + nW, nY + nH)
 
-        // Bottom row, clear of the gesture bar.
-        val menu = listOf("gear", "esc", "kbd", "enter")
-        val mW = min((w - 2 * pad - gap * (menu.size - 1)) / menu.size, w * 0.16f)
+        // Bottom row, well clear of the gesture bar / rounded screen corners.
+        val menu = listOf("gear", "esc", "saveload", "kbd", "enter")
+        val mW = min((w - 2 * pad - gap * (menu.size - 1)) / menu.size, w * 0.15f)
         val mH = min(mW * 0.5f, dp(40f))
-        val mY = h - pad - dp(10f) - mH
+        val mY = h - pad - dp(28f) - mH
         val mStep = (w - 2 * pad - mW) / (menu.size - 1)
         for ((i, id) in menu.withIndex()) {
             val mx = pad + i * mStep
             byId(id).rect.set(mx, mY, mx + mW, mY + mH)
         }
+
+        // Save/Load popup, stacked just above the 💾 pill.
+        val sl = byId("saveload").rect
+        val pw = w * 0.30f
+        val ph = dp(46f)
+        val px0 = (sl.centerX() - pw / 2f).coerceIn(pad, w - pad - pw)
+        popupLoad.set(px0, sl.top - gap * 2f - ph, px0 + pw, sl.top - gap * 2f)
+        popupSave.set(px0, popupLoad.top - gap - ph, px0 + pw, popupLoad.top - gap)
 
         // Main row: stick | action cluster (SHOOT, POGO on top, JUMP beneath).
         val rowTop = nY + nH + gap * 2f
@@ -178,7 +208,8 @@ class TouchOverlayView(context: Context) : View(context) {
         canvas.drawCircle(knobX, knobY, stickR * 0.42f, fillPaint)
 
         for (c in controls) {
-            fillPaint.color = c.fill
+            val lit = c.id == "xray" && xrayOn
+            fillPaint.color = if (lit) teal else c.fill
             if (c.pressed) fillPaint.alpha = (fillPaint.alpha * 0.6f).roundToInt().coerceIn(0, 255)
             if (c.circle) {
                 val r = c.rect.width() / 2f
@@ -189,12 +220,29 @@ class TouchOverlayView(context: Context) : View(context) {
                 canvas.drawRoundRect(c.rect, rr, rr, fillPaint)
                 canvas.drawRoundRect(c.rect, rr, rr, strokePaint)
             }
-            textPaint.color = c.labelColor
+            textPaint.color = if (lit) ink else c.labelColor
             val base = textPaint.textSize
             textPaint.textSize = base * c.textScale * (if (c.circle) 1.15f else 1f)
             val fm = textPaint.fontMetrics
             canvas.drawText(c.label, c.rect.centerX(), c.rect.centerY() - (fm.ascent + fm.descent) / 2f, textPaint)
             textPaint.textSize = base
+        }
+
+        if (saveLoadOpen) {
+            val rr = dp(9f)
+            for ((rect, label, color) in listOf(
+                Triple(popupSave, "SAVE  F5", gold),
+                Triple(popupLoad, "LOAD  F9", teal),
+            )) {
+                fillPaint.color = btnBg
+                canvas.drawRoundRect(rect, rr, rr, fillPaint)
+                strokePaint.color = color
+                canvas.drawRoundRect(rect, rr, rr, strokePaint)
+                strokePaint.color = border
+                textPaint.color = color
+                val fm = textPaint.fontMetrics
+                canvas.drawText(label, rect.centerX(), rect.centerY() - (fm.ascent + fm.descent) / 2f, textPaint)
+            }
         }
     }
 
@@ -227,6 +275,18 @@ class TouchOverlayView(context: Context) : View(context) {
         // Touches on the game picture fall through to SDL.
         if (y < panelTop) return false
 
+        // An open Save/Load popup takes the whole tap: run the choice, or just
+        // close on a tap anywhere else.
+        if (saveLoadOpen) {
+            saveLoadOpen = false
+            invalidate()
+            when {
+                popupSave.contains(x, y) -> tapKey(KeyEvent.KEYCODE_F5)
+                popupLoad.contains(x, y) -> tapKey(KeyEvent.KEYCODE_F9)
+            }
+            return true
+        }
+
         if (hypot(x - stickCx, y - stickCy) <= stickR * 1.15f && stickPointer < 0) {
             stickPointer = pointerId
             updateStick(x, y)
@@ -238,8 +298,9 @@ class TouchOverlayView(context: Context) : View(context) {
             when (c.id) {
                 "gear" -> { onOpenSettings?.invoke(); return true }
                 "kbd" -> { onToggleKeyboard?.invoke(); return true }
+                "saveload" -> { saveLoadOpen = true; invalidate(); return true }
                 "pogo" -> Native.setTouchPogo(true)
-                "xray" -> Native.toggleXray()
+                "xray" -> { Native.toggleXray(); xrayOn = !xrayOn }
             }
             pointerControl[pointerId] = c
             c.pressed = true
@@ -320,6 +381,7 @@ class TouchOverlayView(context: Context) : View(context) {
 
     /** Force every held key up (focus loss, pause). */
     fun releaseAll() {
+        saveLoadOpen = false
         keyHolds.forEach { (code, n) -> if (n > 0) SDLActivity.onNativeKeyUp(code) }
         keyHolds.clear()
         stickKeys.clear()
