@@ -25,6 +25,14 @@ object Settings {
         "Grid (vanilla 2-px scroll steps)", "Off (vanilla 35 fps)")
     val PROFILE_KEYS = arrayOf("enhanced", "vanilla")
     val PROFILE_NAMES = arrayOf("Enhanced (default)", "Vanilla (bug-for-bug DOS)")
+    // Screen filters and pixel softness: the engine's /FILTER and /PIXELS (src/id_vl_filter.c).
+    val FILTER_KEYS = arrayOf("off", "scanlines", "crt", "curved", "rgb", "soft", "amber", "green")
+    val FILTER_NAMES = arrayOf(
+        "Off (default)", "Scanlines", "CRT (scanlines + mask + vignette)", "Curved CRT",
+        "RGB grille", "Soft (blurry pixels)", "Amber monochrome", "Green monochrome")
+    val PIXELS_KEYS = arrayOf("crisp", "light", "low", "medium", "high")
+    val PIXELS_NAMES = arrayOf("Crisp (sharp pixels, default)", "Smooth: light", "Smooth: low",
+        "Smooth: medium", "Smooth: high")
     val POGO_KEYS = arrayOf("off", "120", "150", "180", "240", "300")
     val POGO_NAMES = arrayOf("Off (tap toggles only)", "120 ms", "150 ms", "180 ms (default)", "240 ms", "300 ms")
 
@@ -38,6 +46,11 @@ object Settings {
     fun pogoHold(p: SharedPreferences) = p.getString("pogohold", "180") ?: "180"
     fun modernKeyboard(p: SharedPreferences) = p.getBoolean("modernKeyboard", true)
     fun fullscreen(p: SharedPreferences) = p.getBoolean("fullscreen", true)
+    fun filter(p: SharedPreferences) = p.getString("filter", "off") ?: "off"
+    fun pixels(p: SharedPreferences) = p.getString("pixels", "crisp") ?: "crisp"
+    fun xrayAtStart(p: SharedPreferences) = p.getBoolean("xray", false)
+    /** The engine's QuickSave/QuickLoad "Really ...? (Y/N)" prompt; off by default (one-tap 💾). */
+    fun quickSaveConfirm(p: SharedPreferences) = p.getBoolean("quickSaveConfirm", false)
 
     /** Engine arguments for these settings (episode and paths are added by the caller). */
     fun engineArgs(p: SharedPreferences): List<String> {
@@ -51,6 +64,10 @@ object Settings {
         // Alt on a hardware keyboard; the touch POGO button is always modern.
         a += if (modernKeyboard(p)) "/MODERNCONTROLS" else "/NOMODERNCONTROLS"
         a += listOf("/POGOHOLD", pogoHold(p).uppercase())
+        a += listOf("/FILTER", filter(p), "/PIXELS", pixels(p))
+        // Portrait shows a 4:3 pane: never the widescreen view.
+        a += listOf("/ASPECT", "4:3")
+        a += if (xrayAtStart(p)) "/XRAY" else "/NOXRAY"
         a += "/VSYNC"
         return a
     }
@@ -87,7 +104,7 @@ object Settings {
             setBackgroundColor(dark)
             setPadding(pad, pad, pad, pad / 2)
             addView(TextView(ctx).apply {
-                this.text = if (inGame) "Smoothing, profile and pogo apply the next time an episode starts " +
+                this.text = if (inGame) "These apply the next time an episode starts " +
                     "(the in-game Configure ▸ Options menu changes smoothing live)."
                 else "Applied when an episode starts."
                 setTextColor(dim); textSize = 12f
@@ -95,6 +112,14 @@ object Settings {
             addView(header("Smoothing"))
             addView(radios(SMOOTH_NAMES, idx(SMOOTH_KEYS, smoothing(p))) {
                 p.edit().putString("smoothing", SMOOTH_KEYS[it]).apply()
+            })
+            addView(header("Screen filter"))
+            addView(radios(FILTER_NAMES, idx(FILTER_KEYS, filter(p))) {
+                p.edit().putString("filter", FILTER_KEYS[it]).apply()
+            })
+            addView(header("Pixels"))
+            addView(radios(PIXELS_NAMES, idx(PIXELS_KEYS, pixels(p))) {
+                p.edit().putString("pixels", PIXELS_KEYS[it]).apply()
             })
             addView(header("Camera smoothing"))
             addView(radios(arrayOf("Off (default)", "On"), if (cameraSmoothing(p)) 1 else 0) {
@@ -107,6 +132,15 @@ object Settings {
             addView(header("Pogo retract (hold POGO past this = auto-retract on release)"))
             addView(radios(POGO_NAMES, idx(POGO_KEYS, pogoHold(p))) {
                 p.edit().putString("pogohold", POGO_KEYS[it]).apply()
+            })
+            addView(header("X-ray at start (XR toggles it in game)"))
+            addView(radios(arrayOf("Off (default)", "On"), if (xrayAtStart(p)) 1 else 0) {
+                p.edit().putBoolean("xray", it == 1).apply()
+            })
+            addView(header("QuickSave / QuickLoad (💾) confirmation"))
+            addView(radios(arrayOf("Off: save/load at once (default)", "On: ask Y/N first"),
+                if (quickSaveConfirm(p)) 1 else 0) {
+                p.edit().putBoolean("quickSaveConfirm", it == 1).apply()
             })
             addView(header("Hardware keyboard Alt"))
             addView(radios(arrayOf("Modern pogo (super-bounce, default)", "Plain pogo key"),
@@ -126,7 +160,14 @@ object Settings {
             .also { dlg ->
                 dlg.window?.setBackgroundDrawable(ColorDrawable(dark))
                 dlg.show()
-                dlg.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(text)
+                // Theme.Black's button bar is light grey: make it match the dark panel
+                // so the light "Done" label is readable.
+                dlg.getButton(AlertDialog.BUTTON_POSITIVE)?.let { b ->
+                    b.setTextColor(text)
+                    b.setBackgroundColor(Color.parseColor("#18304f"))
+                    (b.parent as? android.view.View)?.setBackgroundColor(dark)
+                    (b.parent?.parent as? android.view.View)?.setBackgroundColor(dark)
+                }
             }
     }
 }

@@ -66,9 +66,28 @@ object GameSetup {
                 File(game, name).outputStream().use { input.copyTo(it) }
             }
         }
-        saveDir(ctx, ep).mkdirs()
+        val save = saveDir(ctx, ep)
+        save.mkdirs()
+        setConfig(save, "ck_quickSaveConfirm", if (Settings.quickSaveConfirm(Settings.prefs(ctx))) "true" else "false")
         Log.i(TAG, "prepared ${ep.id} in $game (tables $set)")
         return null
+    }
+
+    /**
+     * Set one option in the engine's config (OMNISPK.CFG in /USERPATH, matched
+     * case-insensitively as the engine does), keeping every other line. Options
+     * with no command-line switch (e.g. the QuickSave confirm) are set this way.
+     */
+    fun setConfig(saveDir: File, name: String, value: String) {
+        try {
+            val cfg = saveDir.listFiles()?.firstOrNull { it.name.equals("OMNISPK.CFG", ignoreCase = true) }
+                ?: File(saveDir, "OMNISPK.CFG")
+            val re = Regex("^\\s*" + Regex.escape(name) + "\\s*=.*$")
+            val lines = if (cfg.isFile) cfg.readLines().filterNot { re.matches(it) } else emptyList()
+            cfg.writeText((lines + "$name = $value").joinToString("\n", postfix = "\n"))
+        } catch (e: Exception) {
+            Log.w(TAG, "could not set $name in config: $e")
+        }
     }
 
     /**
