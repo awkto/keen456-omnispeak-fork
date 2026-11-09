@@ -152,7 +152,7 @@ object Settings {
                 p.edit().putBoolean("modernKeyboard", it == 0).apply()
             })
             addView(header("Fullscreen"))
-            addView(radios(arrayOf("On (hide system bars)", "Off (show status bar)"),
+            addView(radios(arrayOf("On (hide system bars)", "Off (show status + navigation bars)"),
                 if (fullscreen(p)) 0 else 1) {
                 p.edit().putBoolean("fullscreen", it == 0).apply()
             })
