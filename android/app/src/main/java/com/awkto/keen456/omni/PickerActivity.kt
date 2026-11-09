@@ -179,17 +179,20 @@ class PickerActivity : Activity() {
     private fun play(ep: Episode) {
         val p = Settings.prefs(this)
         val want = ep.id + "|" + Settings.engineArgs(p).joinToString(" ")
-        val start = {
-            startActivity(Intent(this, KeenActivity::class.java).putExtra(KeenActivity.EXTRA_EPISODE, ep.id))
+        fun start(fresh: Boolean) {
+            val i = Intent(this, KeenActivity::class.java).putExtra(KeenActivity.EXTRA_EPISODE, ep.id)
+            // After a kill the old task record would otherwise be restored with its OLD intent.
+            if (fresh) i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            startActivity(i)
         }
         val am = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
         val game = am.runningAppProcesses?.firstOrNull { it.processName == "$packageName:game" }
         if (game != null && p.getString("runningGame", null) != want) {
             android.os.Process.killProcess(game.pid)
             // Give the system a moment to drop the dead process's task.
-            android.os.Handler(mainLooper).postDelayed(start, 500)
+            android.os.Handler(mainLooper).postDelayed({ start(true) }, 500)
         } else {
-            start()
+            start(false)
         }
     }
 
