@@ -5,7 +5,11 @@ import android.app.AlertDialog
 import android.content.Context
 import android.content.SharedPreferences
 import android.graphics.Color
+import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
+import android.view.Gravity
+import android.view.ViewGroup
+import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
@@ -153,21 +157,34 @@ object Settings {
                 p.edit().putBoolean("fullscreen", it == 0).apply()
             })
         }
-        AlertDialog.Builder(ctx)
-            .setView(ScrollView(ctx).apply { setBackgroundColor(dark); addView(col) })
-            .setPositiveButton("Done", null)
-            .create()
-            .also { dlg ->
-                dlg.window?.setBackgroundDrawable(ColorDrawable(dark))
-                dlg.show()
-                // Theme.Black's button bar is light grey: make it match the dark panel
-                // so the light "Done" label is readable.
-                dlg.getButton(AlertDialog.BUTTON_POSITIVE)?.let { b ->
-                    b.setTextColor(text)
-                    b.setBackgroundColor(Color.parseColor("#18304f"))
-                    (b.parent as? android.view.View)?.setBackgroundColor(dark)
-                    (b.parent?.parent as? android.view.View)?.setBackgroundColor(dark)
-                }
-            }
+        // Title bar with Done at the TOP: the old Theme.Black dialog clips its own
+        // button bar below a tall custom view, so Done never lived there reliably.
+        lateinit var dlg: AlertDialog
+        val bar = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(Color.parseColor("#081020"))
+            setPadding(pad, pad / 2, pad / 2, pad / 2)
+            addView(TextView(ctx).apply {
+                this.text = "Settings"
+                setTextColor(text); textSize = 20f
+                setTypeface(typeface, Typeface.BOLD)
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(Button(ctx).apply {
+                this.text = "Done"
+                setTextColor(Color.parseColor("#14110a"))
+                setBackgroundColor(Color.parseColor("#e8b84b"))
+                setOnClickListener { dlg.dismiss() }
+            })
+        }
+        val root = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(dark)
+            addView(bar)
+            addView(ScrollView(ctx).apply { setBackgroundColor(dark); addView(col) })
+        }
+        dlg = AlertDialog.Builder(ctx).setView(root).create()
+        dlg.window?.setBackgroundDrawable(ColorDrawable(dark))
+        dlg.show()
     }
 }
