@@ -686,11 +686,107 @@ void RF_RenderTile16(int x, int y, int tile)
 	VL_UnmaskedToSurface(src, rf_tileBuffer, x * 16, y * 16, 16, 16);
 }
 
+/* keen456-omnispeak-fork #104: X-ray, display only.
+ *
+ * Hidden passages in Keen 4/5/6 are fore tiles with the high-priority bit (TI_ForeMisc & 0x80: drawn
+ * over sprites) and no collision on any side and no special meaning (misc is exactly 0x80, so poles,
+ * hazards and doors are left alone): Keen walks behind them unseen. With X-ray on they are drawn
+ * see-through. This path works in 16 palette colours, so "see-through" is a fixed dither: half the
+ * tile's pixels are left out (what is beneath shows: the background, and sprites in the fore pass),
+ * and half of the rest are recoloured in cyan shades as a faint tint. The interpolating compositor
+ * (rf_interp.c) blends in RGB instead.
+ *
+ * The 'xray' fix is marked as affecting the sim only so that it is forced off in demos and dumps;
+ * it never touches game state. The state the frame is drawn with (rf_xrayOn) only changes at the
+ * top of RF_Refresh, which then redraws the tile buffer, so the buffer and the fore pass agree. */
+bool rf_xrayAllowToggle;
+static bool rf_xrayOn;
+static volatile bool rf_xrayToggleReq;
+
+bool RF_XrayOn(void)
+{
+	return rf_xrayOn;
+}
+
+bool RF_IsXrayTile(int tile)
+{
+	return tile && TI_ForeMisc(tile) == 0x80 && !TI_ForeTop(tile) && !TI_ForeBottom(tile) &&
+		!TI_ForeLeft(tile) && !TI_ForeRight(tile);
+}
+
+void RF_SetXray(bool on)
+{
+	CK_Fix_SetEnabled(CK_FIX_Xray, on);
+}
+
+void RF_ToggleXray(void)
+{
+	rf_xrayToggleReq = true;
+}
+
+static void RFL_UpdateXray(void)
+{
+	if (rf_xrayToggleReq)
+	{
+		rf_xrayToggleReq = false;
+		RF_SetXray(!CK_Fix_Enabled(CK_FIX_Xray));
+	}
+	bool on = CK_FIX(Xray);
+	if (on == rf_xrayOn)
+		return;
+	rf_xrayOn = on;
+	RF_Reposition(rf_scrollXUnit, rf_scrollYUnit); // redraw the tile buffer
+}
+
+/* The see-through copy of a masked tile (planes: mask, then colour bits 0-3; a set mask bit is
+ * transparent). Pixels where x+y is odd are dropped; of the rest, those on odd rows are tinted. */
+int RF_XrayTint(int colour)
+{
+	static const uint8_t tint[16] = {0, 3, 3, 3, 3, 3, 3, 11, 3, 11, 11, 11, 11, 11, 11, 15};
+	return tint[colour & 15];
+}
+
+static void *RFL_XrayTile16m(int tile)
+{
+	static uint8_t out[5 * 32];
+	const uint8_t *m = (const uint8_t *)CA_GetGrChunk(ca_gfxInfoE.offTiles16m, tile, "Tile16m", true);
+	if (!m)
+		return NULL;
+	memset(out, 0, sizeof(out));
+	for (int y = 0; y < 16; ++y)
+		for (int x = 0; x < 16; ++x)
+		{
+			int off = (y * 16 + x) >> 3, bit = 1 << (7 - ((y * 16 + x) & 7));
+			if ((m[off] & bit) || ((x + y) & 1))
+			{
+				out[off] |= bit;
+				continue;
+			}
+			int px = ((m[off + 128] & bit) ? 8 : 0) | ((m[off + 96] & bit) ? 4 : 0) |
+				((m[off + 64] & bit) ? 2 : 0) | ((m[off + 32] & bit) ? 1 : 0);
+			if (y & 1)
+				px = RF_XrayTint(px);
+			for (int p = 0; p < 4; ++p)
+				if (px & (1 << p))
+					out[off + 32 * (p + 1)] |= bit;
+		}
+	return out;
+}
+
+static void *RFL_ForeTileChunk(int tile)
+{
+	if (rf_xrayOn && RF_IsXrayTile(tile))
+		return RFL_XrayTile16m(tile);
+	return CA_GetGrChunk(ca_gfxInfoE.offTiles16m, tile, "Tile16m", true);
+}
+
 void RF_RenderTile16m(int x, int y, int tile)
 {
 	if (!tile)
 		return;
-	VL_MaskedBlitToSurface(CA_GetGrChunk(ca_gfxInfoE.offTiles16m, tile, "Tile16m", true), rf_tileBuffer, x * 16, y * 16, 16, 16);
+	void *src = RFL_ForeTileChunk(tile);
+	if (src)
+		VL_MaskedBlitToSurface(src, rf_tileBuffer, x * 16, y * 16, 16, 16);
 }
 
 void RF_ForceRefresh(void)
@@ -822,8 +918,9 @@ void RFL_RenderForeTiles()
 				continue;
 			if (!(TI_ForeMisc(tile) & 0x80))
 				continue;
-			VL_MaskedBlitToScreen(CA_GetGrChunk(ca_gfxInfoE.offTiles16m, tile, "Tile16m", true),
-				RF_TileToPixel(stx - scrollXtile), RF_TileToPixel(sty - scrollYtile), 16, 16);
+			void *src = RFL_ForeTileChunk(tile); // #104: see-through with X-ray
+			if (src)
+				VL_MaskedBlitToScreen(src, RF_TileToPixel(stx - scrollXtile), RF_TileToPixel(sty - scrollYtile), 16, 16);
 		}
 	}
 }
@@ -1594,6 +1691,7 @@ int RF_DisplayTileAt(int tileX, int tileY, int plane)
 
 void RF_Refresh()
 {
+	RFL_UpdateXray(); // #104
 	RFL_AnimateTiles();
 
 #ifdef ALWAYS_REDRAW

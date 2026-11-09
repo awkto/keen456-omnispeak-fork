@@ -20,5 +20,18 @@ object Native {
         }
     }
 
+    /**
+     * The touch XR button: toggles X-ray (RF_ToggleXray in src/id_rf.c), display
+     * only: hidden passages are drawn see-through. Applied at the next frame.
+     */
+    fun toggleXray() {
+        try {
+            nativeToggleXray()
+        } catch (e: UnsatisfiedLinkError) {
+            // libmain.so not loaded (yet); nothing to drive.
+        }
+    }
+
     @JvmStatic private external fun nativeSetTouchPogo(down: Boolean)
+    @JvmStatic private external fun nativeToggleXray()
 }

@@ -711,6 +711,16 @@ int main(int argc, char *argv[])
 		{
 			CK_Fix_SetOverride("modern-controls", false);
 		}
+		else if (!CK_Cross_strcasecmp(argv[i], "/XRAY"))
+		{
+			// Display only: hidden passages drawn see-through; F10+H toggles it (keen456-omnispeak-fork #104)
+			CK_Fix_SetOverride("xray", true);
+			rf_xrayAllowToggle = true;
+		}
+		else if (!CK_Cross_strcasecmp(argv[i], "/NOXRAY"))
+		{
+			CK_Fix_SetOverride("xray", false);
+		}
 		else if (!CK_Cross_strcasecmp(argv[i], "/POGOHOLD"))
 		{
 			// Modern pogo auto-retract hold time in ms; 0 or OFF disables it.

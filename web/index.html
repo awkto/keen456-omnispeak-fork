@@ -22,6 +22,7 @@ canvas.fill{width:100vw;height:100vh}
 <label><input type="checkbox" id="cam" checked> Camera smoothing</label></div>
 <div><label title="Hold Alt: pogo + jump (super-bounce); let go and both release. A quick tap keeps the pogo on."><input type="checkbox" id="mpogo" checked> Modern pogo</label>
 Release after: <select id="pogohold"><option value="120">120 ms</option><option value="150">150 ms</option><option value="180" selected>180 ms</option><option value="240">240 ms</option><option value="300">300 ms</option></select></div>
+<div><label title="Display only: hidden passages are drawn see-through with a faint tint. F10+H toggles it in game. Never changes the game."><input type="checkbox" id="xray"> X-ray (reveal secret passages)</label></div>
 <div>Filter: <select id="filter"><option value="off">Off</option><option value="scanlines">Scanlines</option><option value="crt">CRT</option><option value="curved">Curved CRT</option><option value="rgb">RGB mask</option><option value="soft">Soft</option><option value="amber">Amber</option><option value="green">Green</option></select>
 Pixels: <select id="pixels"><option value="crisp">Crisp</option><option value="light">Smooth: light</option><option value="low">Smooth: low</option><option value="medium">Smooth: medium</option><option value="high">Smooth: high</option></select>
 Aspect: <select id="aspect"><option value="auto">4:3</option><option value="as-is">As-is (square pixels)</option><option value="16:10">16:10</option><option value="16:9">16:9</option><option value="fit">Fit window</option></select></div>
@@ -34,7 +35,7 @@ Aspect: <select id="aspect"><option value="auto">4:3</option><option value="as-i
 <input type="file" id="indir" webkitdirectory multiple hidden><input type="file" id="infiles" multiple accept=".zip,.CK4,.CK5,.CK6,.ck4,.ck5,.ck6" hidden>
 </div>
 <p style="font-size:.8em;opacity:.7" id="startnote">Click a button to start (this also enables audio). Saves and options persist in this browser.</p>
-<div id="help"><b>Controls:</b> arrows move, Ctrl jump, Alt pogo (with Modern pogo: hold Alt for pogo + jump, let go to release both; a quick tap keeps the pogo on), Space fire, Enter status, Esc menu, F11 or the Fullscreen button for full screen.<br>
+<div id="help"><b>Controls:</b> arrows move, Ctrl jump, Alt pogo (with Modern pogo: hold Alt for pogo + jump, let go to release both; a quick tap keeps the pogo on), Space fire, Enter status, Esc menu, F11 or the Fullscreen button for full screen. With X-ray ticked, F10+H turns it off and on in game.<br>
 Ctrl+W/T/N and Alt+Tab/Alt+F4 are reserved by the browser or OS and cannot be used in-game.</div>
 <p style="font-size:.75em;opacity:.6">Engine: keen456, a fork of <a style="color:#9cf" href="https://github.com/sulix/omnispeak">Omnispeak</a>, GPL-2 &middot; <a style="color:#9cf" href="omnispeak-src.tar.gz">source for this build</a> &middot; <a style="color:#9cf" href="LICENSE.txt">licence</a>. Commander Keen &copy; id Software.</p>
 </div>
@@ -134,6 +135,8 @@ for(const id of ['filter','pixels','aspect','pogohold']){const el=document.getEl
  if(v&&[...el.options].some(o=>o.value===v))el.value=v; el.onchange=()=>ls(id,el.value);}
 {const v=ls('mpogo'); if(v!==null&&v!==undefined)mpogo.checked=v==='1';}
 mpogo.onchange=()=>ls('mpogo',mpogo.checked?'1':'0');
+{const v=ls('xray'); if(v!==null&&v!==undefined)xray.checked=v==='1';}
+xray.onchange=()=>ls('xray',xray.checked?'1':'0');
 smooth.onchange=()=>ls('smooth',smooth.value); cam.onchange=()=>ls('cam',cam.checked?'1':'0');
 // fullscreen the stage (not the canvas) so the 4:3 CSS letterboxing keeps applying
 fs.onclick=()=>{(document.fullscreenElement?document.exitFullscreen():stage.requestFullscreen()).then?.(()=>canvas.focus());canvas.focus();};
@@ -149,6 +152,7 @@ async function start(ep){
   if(mode==='off') args.push('/NOINTERP'); else args.push('/PROFILE','enhanced','/INTERP',mode);
   if(cam.checked) args.push('/FIX','camera-smoothing');
   if(mpogo.checked) args.push('/MODERNCONTROLS','/POGOHOLD',pogohold.value); else args.push('/NOMODERNCONTROLS');
+  if(xray.checked) args.push('/XRAY'); // #104: display only; F10+H toggles it in game
   args.push('/FILTER',filter.value,'/PIXELS',pixels.value,'/ASPECT',aspect.value);
   if(['16:10','16:9','fit'].includes(aspect.value)) args.push('/FIX','widescreen'); // #103: wider view, also with smoothing off
   {const xa=new URLSearchParams(location.search).get('args'); if(xa) args.push(...xa.trim().split(/\s+/));} // debug/testing: ?args=/TEDLEVEL%201

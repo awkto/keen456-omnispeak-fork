@@ -46,6 +46,9 @@ fails the build if any Keen 5/6 game file ends up in it. Build it locally with
 - **Tile animation fix.** Animated tiles advance with a `while` loop like DOS, instead of Omnispeak's `if`.
 - **Modern controls** (`/MODERNCONTROLS`, opt-in, menu entry): Alt is a press-and-release pogo
   toggle that also jumps (super-bounce). Never active in demos.
+- **X-ray** (`/XRAY`, opt-in, F10+H): display only. Hidden passages (fore tiles drawn over Keen with
+  no collision) are drawn see-through with a faint cyan tint, so you can see the way and Keen inside.
+  Never changes the game; off in demos and dumps. Web launcher checkbox, Android "XR" button.
 - **WebAssembly build** (`web/`, `tools/build-wasm.sh`): runs in the browser with rAF-paced
   interpolated presentation, IndexedDB saves and the engine source linked from the page (GPL).
 - **Keen 6:** the copy-protection creature question is skipped by default.
@@ -178,6 +181,12 @@ Omnispeak supports several command-line options, some of which are:
 		  of worse frame pacing.)
 	/DEMOFILE <filename>
 		- Plays the demo recorded with Keen's F10+D cheat in filename.
+	/XRAY, /NOXRAY
+		- X-ray (display only): hidden passages, i.e. fore tiles drawn
+		  over sprites that have no collision, are drawn see-through
+		  and tinted. With /XRAY, F10+H toggles it in game even without
+		  debug mode. Off in demos and /DUMPFILE. Also the 'fix_xray'
+		  config option.
 	/MODERNCONTROLS, /NOMODERNCONTROLS
 		- Modern pogo on the keyboard pogo key (Alt): one press toggles
 		  pogo and also jumps (the Pogo+Jump "super-bounce"); if the key
