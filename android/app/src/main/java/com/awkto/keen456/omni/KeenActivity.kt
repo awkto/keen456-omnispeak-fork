@@ -60,7 +60,9 @@ class KeenActivity : SDLActivity() {
             finish()
             return
         }
-        Settings.prefs(this).edit().putString("lastEpisode", episode.id).apply()
+        Settings.prefs(this).edit().putString("lastEpisode", episode.id)
+            .putString("runningGame", episode.id + "|" + Settings.engineArgs(Settings.prefs(this)).joinToString(" "))
+            .apply()
 
         super.onCreate(savedInstanceState)
         if (KeenGlue.brokenLibraries()) return
@@ -74,6 +76,7 @@ class KeenActivity : SDLActivity() {
         overlay = TouchOverlayView(this).also { ov ->
             ov.xrayOn = Settings.xrayAtStart(Settings.prefs(this))
             ov.onOpenSettings = { Settings.show(this, inGame = true) { applySystemBars() } }
+            ov.onToggleFullscreen = { SystemBars.toggle(this) }
             ov.onToggleKeyboard = {
                 if (KeenGlue.keyboardShown()) KeenGlue.hideKeyboard() else KeenGlue.showKeyboard()
             }
@@ -84,7 +87,8 @@ class KeenActivity : SDLActivity() {
         // Size SDL's surface to the 4:3 pane at the top; the overlay owns the rest.
         // The engine reads the renderer output size every present, so it simply
         // fills the smaller surface.
-        val root = window.decorView
+        // The content frame, not the decor: with the bars shown it is the area between them.
+        val root = findViewById<View>(android.R.id.content)
         root.addOnLayoutChangeListener { _, l, t, r, b, _, _, _, _ -> layoutGame(r - l, b - t) }
     }
 
@@ -136,19 +140,7 @@ class KeenActivity : SDLActivity() {
         window.attributes = window.attributes.apply { preferredDisplayModeId = best.modeId }
     }
 
-    private fun applySystemBars() {
-        @Suppress("DEPRECATION")
-        window.decorView.systemUiVisibility = if (Settings.fullscreen(Settings.prefs(this))) {
-            (View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                or View.SYSTEM_UI_FLAG_FULLSCREEN
-                or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
-        } else {
-            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-        }
-    }
+    private fun applySystemBars() = SystemBars.apply(this)
 
     /** Back = the game's Esc menu (save/quit live there), not "kill the run". */
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {

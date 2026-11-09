@@ -22,7 +22,7 @@ import kotlin.math.roundToInt
  *     ┌───────────────────────┐
  *     │        game pane      │   SDL surface, sized by KeenActivity
  *     ├───────────────────────┤
- *     │ XR               Y  N │
+ *     │ XR ⛶             Y  N │
  *     │            SHOOT POGO │
  *     │  (stick)              │
  *     │              JUMP     │
@@ -83,6 +83,7 @@ class TouchOverlayView(context: Context) : View(context) {
     var panelTop = 0f
         set(v) { field = v; if (width > 0) layoutControls(width.toFloat(), height.toFloat()); invalidate() }
 
+    var onToggleFullscreen: (() -> Unit)? = null
     var onOpenSettings: (() -> Unit)? = null
     var onToggleKeyboard: (() -> Unit)? = null
 
@@ -121,6 +122,7 @@ class TouchOverlayView(context: Context) : View(context) {
         controls += Control("ny", "Y", intArrayOf(KeyEvent.KEYCODE_Y), btnBg, gold, false)
         controls += Control("nn", "N", intArrayOf(KeyEvent.KEYCODE_N), btnBg, gold, false)
         controls += Control("xray", "XR", intArrayOf(), btnBg, teal, false, 0.8f)
+        controls += Control("fs", "⛶", intArrayOf(), btnBg, textCol, false, 0.8f)
         controls += Control("gear", "⚙", intArrayOf(), btnBg, textCol, false)
         controls += Control("esc", "ESC", intArrayOf(KeyEvent.KEYCODE_ESCAPE), btnBg, textCol, false, 0.8f)
         controls += Control("saveload", "💾", intArrayOf(), greenBg, green, false)
@@ -148,6 +150,8 @@ class TouchOverlayView(context: Context) : View(context) {
         byId("ny").rect.set(w - pad - nW * 2f - gap, nY, w - pad - nW - gap, nY + nH)
         // XR (X-ray toggle) at the top-left, same size as Y/N.
         byId("xray").rect.set(pad, nY, pad + nW, nY + nH)
+        // Fullscreen (system bars) toggle right next to it.
+        byId("fs").rect.set(pad + nW + gap, nY, pad + nW * 2f + gap, nY + nH)
 
         // Bottom row, well clear of the gesture bar / rounded screen corners.
         val menu = listOf("gear", "esc", "saveload", "kbd", "enter")
@@ -297,6 +301,7 @@ class TouchOverlayView(context: Context) : View(context) {
             if (!hit(c, x, y)) continue
             when (c.id) {
                 "gear" -> { onOpenSettings?.invoke(); return true }
+                "fs" -> { onToggleFullscreen?.invoke(); return true }
                 "kbd" -> { onToggleKeyboard?.invoke(); return true }
                 "saveload" -> { saveLoadOpen = true; invalidate(); return true }
                 "pogo" -> Native.setTouchPogo(true)
