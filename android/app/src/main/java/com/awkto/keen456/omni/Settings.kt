@@ -104,7 +104,9 @@ object Settings {
      * The settings dialog, shared by the picker and the game. onChanged runs
      * after any change (the game uses it for live bits like fullscreen).
      */
-    fun show(ctx: Context, inGame: Boolean, onChanged: () -> Unit = {}) {
+    fun show(base: Context, inGame: Boolean, onChanged: () -> Unit = {}) {
+        // Material widgets (the default dialog theme is the old black Holo one: tiny switches, grey spinners).
+        val ctx = android.view.ContextThemeWrapper(base, android.R.style.Theme_DeviceDefault)
         val p = prefs(ctx)
         val dark = Color.parseColor("#0b1526")
         val card = Color.parseColor("#12203a")
