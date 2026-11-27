@@ -46,6 +46,11 @@ fails the build if any Keen 5/6 game file ends up in it. Build it locally with
 - **Tile animation fix.** Animated tiles advance with a `while` loop like DOS, instead of Omnispeak's `if`.
 - **Modern controls** (`/MODERNCONTROLS`, opt-in, menu entry): Alt is a press-and-release pogo
   toggle that also jumps (super-bounce). Never active in demos.
+- **Hotkeys and zoom** (#106): in game, V cycles the screen filter and Z cycles the zoom (normal,
+  out 1 = 1.25x, out 2 = 1.5x more of the level both ways, e.g. 320x200 -> 400x250 -> 480x300),
+  each with a short on-screen label and saved to the config; `/ZOOM 0|1|2` sets the starting level.
+  Zoom needs the `zoom` fix (sim, on in `enhanced`): actors wake across the whole view. Details in
+  [`docs/FILTERS.md`](docs/FILTERS.md).
 - **X-ray** (`/XRAY`, opt-in, F10+H): display only. Hidden passages (fore tiles drawn over Keen with
   no collision) are drawn see-through with a faint cyan tint, so you can see the way and Keen inside.
   Never changes the game; off in demos and dumps. Web launcher checkbox, Android "XR" button.
@@ -100,7 +105,7 @@ x86_64 executable (engine, bundled SDL2, tables for Keen 4/5/6 incl. v1.5; needs
 and the usual desktop libs). `./keen456 4|5|6` launches an episode (or symlink it as `keen4`,
 `keen5`, `keen6`). Defaults: subpixel smoothing, camera smoothing, 16:9 widescreen, modern pogo,
 windowed. Options: `--wide[=16:9|16:10|fit]`, `--no-wide`, `--smooth=off|grid|pixel|subpixel`,
-`--filter=NAME`, `--vanilla`, `--xray`, `--fullscreen`, `--border` (the original cyan EGA border; off by default), `--data DIR` (or `KEEN_DATA`), any raw
+`--filter=NAME`, `--zoom=0|1|2`, `--vanilla`, `--xray`, `--fullscreen`, `--border` (the original cyan EGA border; off by default), `--data DIR` (or `KEEN_DATA`), any raw
 `/ENGINEARG`; preferences can go in `~/.config/keen456/args`. Saves live in
 `~/.local/share/keen456/keen<N>/`. The public build contains only the Keen 4 shareware; the private
 build with your own K4-K6 data is for the owner and is never published. Run `./keen456 --help`.

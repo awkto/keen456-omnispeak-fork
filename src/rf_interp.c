@@ -41,8 +41,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *   OMNI_DEBUG_INTERP_HZ=<n>          virtual display rate for the capture (60); in realtime,
  *       caps the present rate to <n> Hz (as when there is no vsync).
  *   OMNI_DEBUG_INTERP_SKIP / _FRAMES  bound the recording; exits when done.
- *   OMNI_DEBUG_INTERP_LOG=<file.csv>  per-display-frame camera/Keen trace (capture only).
- *   OMNI_DEBUG_INTERP_SCRIPT="right:0-600,jump:80-90,..."  inject input by sim frame.
+ *   OMNI_DEBUG_INTERP_LOG=<file.csv>  per-display-frame camera/Keen trace (capture only); the
+ *       *_qpx columns are output pixels (1/4 px, or 1/3 px zoomed out), view_x_u/view_y_u the
+ *       view's top-left corner in units (#106).
+ *   OMNI_DEBUG_INTERP_SCRIPT="right:0-600,jump:80-90,..."  inject input by sim frame
+ *       (keys: right left up down jump pogo fire enter, and v z for the #106 hotkeys).
  *   OMNI_DEBUG_INTERP_WARP="sim,tx,ty"  put Keen at a tile at that sim frame (reach map edges, #103).
  *   OMNI_DEBUG_INTERP_STATS=1         frame-time/compose stats to stderr + window title.
  *   OMNI_DEBUG_INTERP_PRESENTS=<file.csv>  one line per presented frame, for the cadence
@@ -83,13 +86,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "ck_play.h"
 #include "ck_phys.h"
 
-#define S 4 /* output scale: sub-pixel quantum is 1/S px = 16/S units */
+/* output scale: sub-pixel quantum is 1/S px = 16/S units. 4, or 3 for a zoomed-out view (#106),
+ * which keeps the frame about the size of a 4x 320x200 one (480x300 -> 1440x900) */
+static int rfiScale = 4;
+#define S rfiScale
 #define RF_NUM_SPRITE_Z_LAYERS 4
-/* #103: frames are viewW game pixels wide (320, or wider in widescreen); buffers fit the widest */
-#define OUT_MAX_W (VL_WIDE_MAX_W * S)
-#define OUT_H (200 * S)
-#define LAYER_TW (VL_WIDE_MAX_W / 16 + 3)
-#define LAYER_TH 16
+/* #103: frames are viewW game pixels wide (320, or wider in widescreen); buffers fit the widest.
+ * #106: and viewH lines tall (200, or more zoomed out, at S = 3) */
+#define OUT_MAX_W (RF_ZOOM_MAX_W * 3 > VL_WIDE_MAX_W * 4 ? RF_ZOOM_MAX_W * 3 : VL_WIDE_MAX_W * 4)
+#define OUT_MAX_H (RF_ZOOM_MAX_H * 3 > 200 * 4 ? RF_ZOOM_MAX_H * 3 : 200 * 4)
+#define LAYER_TW (RF_ZOOM_MAX_W / 16 + 3)
+#define LAYER_TH (RF_ZOOM_MAX_H / 16 + 3)
 #define LAYER_W (LAYER_TW * 16)
 #define LAYER_H (LAYER_TH * 16)
 #define KEY 0xFF
@@ -133,21 +140,24 @@ static double smoothD[2], smoothV[2], smoothT[2], smoothTime;
 static bool havePrev;
 static const CK_action *lastKeenAct; /* #76: Keen's action at the previous sim frame */
 static uint8_t layerBack[LAYER_W * LAYER_H], layerFore[LAYER_W * LAYER_H];
-static uint8_t out8[OUT_MAX_W * OUT_H];
-static uint32_t out32[OUT_MAX_W * OUT_H];
-static uint8_t out24[OUT_MAX_W * OUT_H * 3];
+static uint8_t out8[OUT_MAX_W * OUT_MAX_H];
+static uint32_t out32[OUT_MAX_W * OUT_MAX_H];
+static uint8_t out24[OUT_MAX_W * OUT_MAX_H * 3];
 /* keen456-omnispeak-fork #104: X-ray. Where a hidden-passage tile (RF_IsXrayTile) would cover the
  * picture, out8 keeps what is beneath it (background, sprites below the fore layer) and outX holds
  * XRAY_PX | the tile's colour; the palette expansion blends the two and adds a faint tint. A sprite
  * drawn over the fore layer clears outX. outX is only read while xrayFrame is set. */
 #define XRAY_PX 0x10
 #define XRAY_LAYER 0x20 /* layerFore: XRAY_LAYER | colour marks a see-through pixel (KEY is 0xFF) */
-static uint8_t outX[OUT_MAX_W * OUT_H];
+static uint8_t outX[OUT_MAX_W * OUT_MAX_H];
 static bool xrayFrame;
 /* #103: width of the frame being composed (OUT_W) and where the vanilla 320-px camera window
  * lies in it (game pixels from its left edge; 0 when not wide). */
-static int outW = 320 * S, viewW = 320, viewOffX;
+static int outW = 320 * 4, viewW = 320, viewOffX;
 #define OUT_W outW
+/* #106: the same vertically (a zoomed-out view is taller than the 200-line camera window) */
+static int outH = 200 * 4, viewH = 200, viewOffY;
+#define OUT_H outH
 /* #103: widescreen scene state for presents outside RFI_Frame (RFI_PresentWideStill):
  * wideValid while the last game frame was wide and the screen still shows the game;
  * sbX0..sbX1/sbY0..sbY1 = the scorebox's rectangle in out8 (empty if none). */
@@ -166,6 +176,7 @@ static int logCamX, logKeenX, logKeenWorldX, logKeenY, logPlatX, logPlatY;
 static bool logPlat;
 static int logDevX, logDevY;
 static int logSBX, logSBY; /* scorebox screen position (quarter pixels); -99999 if not drawn */
+static int logViewX, logViewY; /* #106: the view's top-left corner (units) */
 static double logAlpha;
 static double logComposeS, logGapS, lastPresentEnd = -1; /* OMNI_DEBUG_INTERP_PRESENTS timing */
 
@@ -196,7 +207,8 @@ static void ParseScript(const char *s)
 		int key = !strcmp(name, "right") ? IN_SC_RightArrow : !strcmp(name, "left") ? IN_SC_LeftArrow :
 			!strcmp(name, "up") ? IN_SC_UpArrow : !strcmp(name, "down") ? IN_SC_DownArrow :
 			!strcmp(name, "jump") ? IN_SC_Control : !strcmp(name, "pogo") ? IN_SC_Alt :
-			!strcmp(name, "fire") ? IN_SC_Space : !strcmp(name, "enter") ? IN_SC_Enter : 0;
+			!strcmp(name, "fire") ? IN_SC_Space : !strcmp(name, "enter") ? IN_SC_Enter :
+			!strcmp(name, "v") ? IN_SC_V : !strcmp(name, "z") ? IN_SC_Z : 0; /* #106: hotkey tests */
 		if (key) script[scriptN++] = (ScriptEv){key, a, b};
 		s += n; if (*s == ',') s++;
 	}
@@ -244,7 +256,7 @@ void RFI_Startup(RFI_Mode m)
 		logFile = fopen(e, "w");
 		if (logFile)
 		{
-			fprintf(logFile, "disp,sim,alpha,cam_x_qpx,keen_world_x_qpx,keen_screen_x_qpx,keen_screen_y,plat_screen_x,plat_screen_y,cam_y_qpx,sim_cam_x_u,sim_cam_y_u,cam_dev_x_u,cam_dev_y_u,scorebox_x_qpx,scorebox_y_qpx\n");
+			fprintf(logFile, "disp,sim,alpha,cam_x_qpx,keen_world_x_qpx,keen_screen_x_qpx,keen_screen_y,plat_screen_x,plat_screen_y,cam_y_qpx,sim_cam_x_u,sim_cam_y_u,cam_dev_x_u,cam_dev_y_u,scorebox_x_qpx,scorebox_y_qpx,view_x_u,view_y_u\n");
 			if (!logsAtexit) { atexit(RFI_CloseLogs); logsAtexit = true; }
 		}
 	}
@@ -520,7 +532,7 @@ static void RFI_DebugDumpFrame(void)
 	for (int y = 0; y < 200; ++y)
 	{
 		for (int x = 0; x < 320; ++x)
-			row[x] = (uint8_t)(out8[(y * S) * OUT_W + (viewOffX + x) * S] & 0xF);
+			row[x] = (uint8_t)(out8[((viewOffY + y) * S) * OUT_W + (viewOffX + x) * S] & 0xF);
 		fwrite(row, 1, 320, debugFrameFile);
 	}
 }
@@ -568,8 +580,11 @@ static void Compose(double alpha)
 {
 	/* #103: frame width; the view and the sim's wake range use the same RF_ViewWidth */
 	viewW = RF_ViewWidth();
+	viewH = RF_ViewHeight(); /* #106 */
+	S = (viewH > 200) ? 3 : 4;
 	outW = viewW * S;
-	bool wide = viewW > 320;
+	outH = viewH * S;
+	bool wide = viewW > 320 || viewH > 200;
 	int qx = (mode == RFI_Mode_Grid) ? 32 : (mode == RFI_Mode_Pixel) ? 16 : 16 / S;
 	int qy = (mode == RFI_Mode_Grid) ? 16 : qx;
 	if (mode == RFI_Mode_Grid) alpha = 1.0;
@@ -598,16 +613,21 @@ static void Compose(double alpha)
 	int bandL = 0, bandR = 0;
 	int vx = RF_WideViewLeft(camX, viewW, rf_scrollXUnit, &bandL, &bandR);
 	camY = RF_ClampViewTop(camY, rf_scrollYUnit);
+	/* #106: the view's top edge (vy), the same way; vy == camY for a 200-line view */
+	int bandT = 0, bandB = 0;
+	int vy = RF_WideViewTop(camY, viewH, rf_scrollYUnit, &bandT, &bandB);
 	if (!wide)
 		camX = vx; /* the 320 view is the camera window itself */
 	viewOffX = (camX - vx) / 16;
-	int originTX = FloorDiv(vx, 256) - 1, originTY = FloorDiv(camY, 256) - 1;
-	int offX = (vx - originTX * 256) * S / 16, offY = (camY - originTY * 256) * S / 16;
+	viewOffY = (camY - vy) / 16;
+	int originTX = FloorDiv(vx, 256) - 1, originTY = FloorDiv(vy, 256) - 1;
+	int offX = (vx - originTX * 256) * S / 16, offY = (vy - originTY * 256) * S / 16;
 	RF_SpriteDrawEntry *hud = NULL; /* the scorebox, drawn last in wide frames */
 	int hudX = 0, hudY = 0;
 	sbX0 = sbX1 = sbY0 = sbY1 = 0;
 
 	logCamX = camX * S / 16; logCamY = camY * S / 16; logAlpha = alpha;
+	logViewX = vx; logViewY = vy;
 	logPlat = false;
 	logSBX = logSBY = -99999;
 
@@ -678,7 +698,10 @@ static void Compose(double alpha)
 			/* #103: in a wide frame the scorebox stays in the top-left corner of the whole view */
 			bool isHud = wide && ck_scoreBoxObj && sde == ck_scoreBoxObj->sde;
 			if (isHud)
+			{
 				ux += vx - camX;
+				uy += vy - camY; /* #106 */
+			}
 			if (mode == RFI_Mode_Grid)
 			{
 				/* Vanilla (RF_AddSpriteDraw) only has as many pre-shifted copies as the
@@ -699,10 +722,10 @@ static void Compose(double alpha)
 					(ck_keenObj && sde == ck_keenObj->sde && ck_keenObj->currentAction) ? (int)ck_keenObj->currentAction->compatDosPointer : -1);
 			if (isHud)
 			{
-				hud = sde; hudX = (ux - vx) * S / 16; hudY = (uy - camY) * S / 16;
+				hud = sde; hudX = (ux - vx) * S / 16; hudY = (uy - vy) * S / 16;
 				continue;
 			}
-			BlitSprite(sde, (ux - vx) * S / 16, (uy - camY) * S / 16);
+			BlitSprite(sde, (ux - vx) * S / 16, (uy - vy) * S / 16);
 		}
 	}
 	if (!wide)
@@ -710,9 +733,13 @@ static void Compose(double alpha)
 	/* #103: black outside the band the camera may scroll to (beyond a scroll block or the map) */
 	int bx0 = CK_Cross_max(0, CK_Cross_min(OUT_W, (bandL - vx) * S / 16));
 	int bx1 = CK_Cross_max(0, CK_Cross_min(OUT_W, (bandR - vx) * S / 16));
+	/* #106: and above / below the vertical band */
+	int by0 = CK_Cross_max(0, CK_Cross_min(OUT_H, (bandT - vy) * S / 16));
+	int by1 = CK_Cross_max(0, CK_Cross_min(OUT_H, (bandB - vy) * S / 16));
 	for (int y = 0; y < OUT_H; ++y)
 	{
 		uint8_t *row = out8 + y * OUT_W, *rowX = outX + y * OUT_W;
+		if (y < by0 || y >= by1) { memset(row, 0, OUT_W); memset(rowX, 0, OUT_W); continue; }
 		if (bx0 > 0) { memset(row, 0, bx0); memset(rowX, 0, bx0); }
 		if (bx1 < OUT_W) { memset(row + bx1, 0, OUT_W - bx1); memset(rowX + bx1, 0, OUT_W - bx1); }
 	}
@@ -733,16 +760,18 @@ static void OverlayVanilla(int sx, int sy)
 {
 	void *screen = vl_emuegavgaadapter.screen;
 	int vbX0 = sbX0 + viewOffX * S, vbX1 = sbX1 + viewOffX * S;
+	int vbY0 = sbY0 + viewOffY * S, vbY1 = sbY1 + viewOffY * S; /* #106: the window's own scorebox rows */
 	for (int y = 0; y < 200; ++y)
 	{
-		int oy = y * S;
-		bool sbRow = oy >= sbY0 && oy < sbY1;
+		int oy = (viewOffY + y) * S;
+		if (oy < 0 || oy + S > OUT_H) continue;
+		bool sbRow = oy >= sbY0 && oy < sbY1, vbRow = oy >= vbY0 && oy < vbY1;
 		uint8_t *dst = out8 + oy * OUT_W;
 		for (int x = 0; x < 320; ++x)
 		{
 			int ox = (viewOffX + x) * S;
 			if (ox < 0 || ox + S > OUT_W) continue;
-			if (sbRow && ((ox + S > sbX0 && ox < sbX1) || (ox + S > vbX0 && ox < vbX1))) continue;
+			if ((sbRow && ox + S > sbX0 && ox < sbX1) || (vbRow && ox + S > vbX0 && ox < vbX1)) continue;
 			uint8_t c = (uint8_t)(VL_SurfacePGet(screen, sx + x, sy + y) & 15);
 			if (xrayFrame && outX[oy * OUT_W + ox])
 			{
@@ -819,7 +848,7 @@ bool RFI_PresentWideStill(void)
 	int sx, sy;
 	if (rf_widePlay)
 	{
-		if (RF_ViewWidth() <= 320)
+		if (RF_ViewWidth() <= 320 && RF_ViewHeight() <= 200) /* #106: or zoomed out */
 		{
 			wideValid = false;
 			return false;
@@ -889,7 +918,7 @@ static void Present(void)
 			fprintf(logFile, "%ld,%ld,%.3f,%d,%d,%d,%d,", dispFrame, simFrame, logAlpha, logCamX, logKeenWorldX, logKeenX, logKeenY);
 			if (logPlat && ck_keenState.platform) fprintf(logFile, "%d,%d", logPlatX, logPlatY);
 			else fprintf(logFile, ",");
-			fprintf(logFile, ",%d,%d,%d,%d,%d,%d,%d\n", logCamY, rf_scrollXUnit, rf_scrollYUnit, logDevX, logDevY, logSBX, logSBY);
+			fprintf(logFile, ",%d,%d,%d,%d,%d,%d,%d,%d,%d\n", logCamY, rf_scrollXUnit, rf_scrollYUnit, logDevX, logDevY, logSBX, logSBY, logViewX, logViewY);
 		}
 		LogPresent(vnow);
 		if (dispFrame >= capSkip)
@@ -1012,7 +1041,7 @@ void RFI_Frame(void)
 		if (alpha < 0) alpha = 0;
 		double c0 = Now();
 		Compose(alpha);
-		wideValid = viewW > 320;
+		wideValid = viewW > 320 || viewH > 200;
 		logComposeS = Now() - c0;
 		logGapS = lastPresentEnd < 0 ? 0 : g0 - lastPresentEnd;
 		composeSum += logComposeS;

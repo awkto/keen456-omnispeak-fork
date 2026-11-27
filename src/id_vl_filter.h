@@ -44,6 +44,13 @@ bool VLF_Active(void);
 /* seconds the backends spent in VLF_Apply since rf_interp last cleared it (debug stats) */
 extern double vl_filterWorkS;
 
+/* keen456-omnispeak-fork #106: a short message (hotkey feedback, "FILTER: CRT") drawn over the
+ * top of the presented frame for about 1.5 s. Drawn after the filters, on the final frame only;
+ * never in the composed buffer, so frame dumps and the simulation never see it. While it shows,
+ * VLF_LabelActive() is true and the backends send 320x200 frames through VLF_Apply as well. */
+void VLF_ShowLabel(const char *text);
+bool VLF_LabelActive(void);
+
 /* Filter a w x h ARGB frame. A 320x200 frame is first expanded 4x (nearest). Returns a buffer
  * owned by the module (valid until the next call) and its size, or src itself and unchanged
  * size when nothing is active. src is never modified. */

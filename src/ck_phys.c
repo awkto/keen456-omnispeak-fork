@@ -836,9 +836,10 @@ void CK_SetAction2(CK_object *obj, CK_action *act)
 bool CK_ObjectVisible(CK_object *obj)
 {
 	// TODO: Use ScrollX0_T,  ScrollX1_T and co. directly?
-	int x0, x1;
+	int x0, x1, y0, y1;
 	CK_ViewTilesX(&x0, &x1); // keen456-omnispeak-fork #103: the 320-px window in vanilla
-	if (obj->clipRects.tileX2 < x0 || obj->clipRects.tileY2 < RF_UnitToTile(rf_scrollYUnit) || obj->clipRects.tileX1 > x1 || obj->clipRects.tileY1 > (RF_UnitToTile(rf_scrollYUnit) + RF_PixelToTile(208)))
+	CK_ViewTilesY(&y0, &y1); // #106: the 208-px window in vanilla
+	if (obj->clipRects.tileX2 < x0 || obj->clipRects.tileY2 < y0 || obj->clipRects.tileX1 > x1 || obj->clipRects.tileY1 > y1)
 	{
 		return false;
 	}
