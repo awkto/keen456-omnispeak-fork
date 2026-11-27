@@ -529,6 +529,35 @@ void *ca_graphStarts;
 int ca_graphHeadSize;
 // Size of the ?GAGRAPH file (in bytes)
 int ca_graphFileSize;
+// Name of the ?GAGRAPH file, for error messages.
+static const char *ca_graphFileName = "EGAGRAPH";
+
+/*
+ * keen456 (#102): game data that doesn't match the loaded tables (another
+ * release, or a truncated copy) used to hang (a read loop spinning at EOF) or
+ * crash. These name the file and the releases this build's tables expect.
+ */
+static const char *CAL_SupportedVersions(void)
+{
+	switch (ck_currentEpisode ? ck_currentEpisode->ep : EP_Nil)
+	{
+	case EP_CK4:
+		return "Keen 4 v1.4";
+	case EP_CK5:
+		return "Keen 5 v1.4";
+	case EP_CK6:
+		return "Keen 6 v1.4 or v1.5";
+	default:
+		return "a supported version";
+	}
+}
+
+static void CAL_DataTooShort(const char *fileName, const char *what, long offset, long need, long fileSize)
+{
+	QuitF("%s is shorter than this game version expects (%s at offset %ld needs %ld bytes, the file is %ld bytes). "
+	      "Your game files don't match the tables loaded: import %s files.",
+		fileName, what, offset, need, fileSize, CAL_SupportedVersions());
+}
 
 //Get the offset of a (compressed) chunk in the ?GAGRAPH file.
 long CAL_GetGrChunkStart(int chunk)
@@ -751,6 +780,27 @@ void CAL_SetupGrFile()
 	// Find the size of the file. Some mods do not have the last entry in the ?GAHEAD,
 	// so we compute it like so.
 	ca_graphFileSize = FS_GetFileSize(ca_graphHandle);
+	ca_graphFileName = graphName;
+
+	// keen456 (#102): every chunk offset in ?GAHEAD must lie within ?GAGRAPH,
+	// or caching that chunk would read past the end of the file.
+	{
+		long maxStart = -1;
+		int maxChunk = -1;
+		for (int chunk = 0; chunk * 3 + 2 < ca_graphHeadSize; ++chunk)
+		{
+			long start = CAL_GetGrChunkStart(chunk);
+			if (start > maxStart)
+			{
+				maxStart = start;
+				maxChunk = chunk;
+			}
+		}
+		if (maxStart > ca_graphFileSize)
+			QuitF("%s is %d bytes, but this game version's %s points to offset %ld (chunk %d). "
+			      "Your game files don't match: import %s files.",
+				graphName, ca_graphFileSize, headName, maxStart, maxChunk, CAL_SupportedVersions());
+	}
 
 	// Read in the graphics headers (from TED's GFXINFOE)
 	// For some reason, keen decompresses these differently, not
@@ -841,6 +891,12 @@ void CA_CacheGrChunk(int chunk)
 		if (curRead < 0)
 		{
 			Quit("Error reading compressed graphics chunk.");
+		}
+		if (curRead == 0) // EOF: the loop would otherwise spin forever (#102)
+		{
+			char what[32];
+			snprintf(what, sizeof(what), "chunk %d", chunk);
+			CAL_DataTooShort(ca_graphFileName, what, CAL_GetGrChunkStart(chunk), compressedLength, ca_graphFileSize);
 		}
 		read += curRead;
 	} while (read < compressedLength);
@@ -1079,6 +1135,8 @@ CA_MapHead *ca_MapHead;
 FS_File ca_GameMaps;
 
 CA_MapHeader *CA_MapHeaders[CA_NUMMAPS];
+static const char *ca_gameMapsFileName = "GAMEMAPS";
+static long ca_gameMapsFileSize;
 
 uint16_t *CA_mapPlanes[CA_NUMMAPPLANES];
 
@@ -1102,6 +1160,21 @@ void CAL_SetupMapFile(void)
 	ca_GameMaps = FS_OpenKeenFile(gameMapsFileName);
 	if (!FS_IsFileValid(ca_GameMaps))
 		QuitF("Couldn't open %s!", gameMapsFileName);
+	ca_gameMapsFileName = gameMapsFileName;
+	ca_gameMapsFileSize = FS_GetFileSize(ca_GameMaps);
+
+	// keen456 (#102): each map header in ?MAPHEAD (38 bytes + the 4-byte
+	// signature CA_CacheMap reads) must lie within ?GAMEMAPS.
+	for (int i = 0; i < CA_NUMMAPS; ++i)
+	{
+		uint32_t off = ca_MapHead->headerOffsets[i];
+		if (off == 0 || off == 0xFFFFFFFF)
+			continue;
+		if ((long)off + 42 > ca_gameMapsFileSize)
+			QuitF("%s is %ld bytes, but this game version's %s puts map %d's header at offset %lu. "
+			      "Your game files don't match: import %s files.",
+				gameMapsFileName, ca_gameMapsFileSize, mapHeadFileName, i, (unsigned long)off, CAL_SupportedVersions());
+	}
 	// Try reading TILEINFO.EXT first, otherwise use data from MAPHEAD.EXT
 	ti_tileInfo = NULL;
 	const char *tileInfoName = CK_FILENAME(ca_tileInfo, "TILEINFO.EXT");
@@ -1163,7 +1236,8 @@ void CAL_SetupAudioFile(void)
 
 		//Load the AUDIOHHD
 		const char *head_fname = CK_FILENAME(ca_audioHead, "AUDIOHHD.EXT");
-		if (!CA_LoadFile(head_fname, (void **)(&ca_audiostarts), 0))
+		int headSize = 0;
+		if (!CA_LoadFile(head_fname, (void **)(&ca_audiostarts), &headSize))
 			QuitF("Couldn't load (compressed) audio header %s\n", head_fname);
 
 		//Load the sound data --- we will keep the file open for the duration of the game.
@@ -1172,6 +1246,17 @@ void CAL_SetupAudioFile(void)
 		if (!ca_audiohandle)
 		{
 			QuitF("Can't open %s!", audio_fname);
+		}
+
+		// keen456 (#102): every chunk offset in the audio header must lie within the audio file.
+		long audioSize = FS_GetFileSize(ca_audiohandle);
+		for (int i = 0; i < headSize / 4; ++i)
+		{
+			int32_t start = CK_Cross_SwapLE32(ca_audiostarts[i]);
+			if (start > audioSize)
+				QuitF("%s is %ld bytes, but this game version's %s points to offset %ld (chunk %d). "
+				      "Your game files don't match: import %s files.",
+					audio_fname, audioSize, head_fname, (long)start, i, CAL_SupportedVersions());
 		}
 	}
 	else
@@ -1279,6 +1364,12 @@ void CA_CacheMap(int mapIndex)
 			if (curRead < 0)
 			{
 				Quit("Error reading compressed map plane.");
+			}
+			if (curRead == 0) // EOF: the loop would otherwise spin forever (#102)
+			{
+				char what[48];
+				snprintf(what, sizeof(what), "map %d plane %d", mapIndex, plane);
+				CAL_DataTooShort(ca_gameMapsFileName, what, planeOffset, planeCompLength, ca_gameMapsFileSize);
 			}
 			read += curRead;
 		} while (read < planeCompLength);
