@@ -32,6 +32,22 @@ object Native {
         }
     }
 
+    /**
+     * Route the engine's stdout/stderr (Quit() messages, warnings) to logcat
+     * (tag "omnispeak") and to logPath; an error Quit() also leaves its message
+     * in "<logPath>.error" for the picker. diag adds a 3-second heartbeat with a
+     * native backtrace of the engine thread (diagnostic builds). Call once per
+     * :game process, after the libraries are loaded and before SDL_main.
+     */
+    fun startLog(logPath: String, diag: Boolean) {
+        try {
+            nativeStartLog(logPath, diag)
+        } catch (e: UnsatisfiedLinkError) {
+            // libmain.so not loaded; SDLActivity shows its own error.
+        }
+    }
+
+    @JvmStatic private external fun nativeStartLog(logPath: String, diag: Boolean)
     @JvmStatic private external fun nativeSetTouchPogo(down: Boolean)
     @JvmStatic private external fun nativeToggleXray()
 }

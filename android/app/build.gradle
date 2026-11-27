@@ -26,6 +26,9 @@ android {
         targetSdk 34
         versionCode project.hasProperty('keenVersionCode') ? keenVersionCode.toInteger() : 1
         versionName project.hasProperty('keenVersionName') ? keenVersionName : '0.1.0-dev'
+        // Private diagnostic build (tools/build-android.sh with KEEN_DIAG=1): on-screen engine
+        // log + watchdog backtraces. Never set for the published APK.
+        buildConfigField 'boolean', 'KEEN_DIAG', (project.findProperty('keenDiag') == 'true') ? 'true' : 'false'
         ndk {
             abiFilters 'arm64-v8a', 'x86_64'
         }
@@ -48,6 +51,11 @@ android {
             java.srcDirs += "${sdlDir}/android-project/app/src/main/java"
             // Omnispeak's per-episode tables (data/keen*), copied in by copyOmniTables.
             assets.srcDirs += "${buildDir}/generated/omniAssets"
+            // Private diagnostic build only: extra bundled game data (-PkeenBundleAssets=<dir>
+            // holding game/<episode>/...). Never set for the published APK (CI checks).
+            if (project.hasProperty('keenBundleAssets')) {
+                assets.srcDirs += project.property('keenBundleAssets')
+            }
         }
     }
 

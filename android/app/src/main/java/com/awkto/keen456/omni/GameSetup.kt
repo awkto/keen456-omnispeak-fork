@@ -22,27 +22,34 @@ object GameSetup {
 
     fun saveDir(ctx: Context, ep: Episode): File = File(File(baseDir(ctx), "save"), ep.id)
 
+    /** The engine's log of the last run of this episode (Native.startLog); "<log>.error" holds an error Quit(). */
+    fun logFile(ctx: Context, ep: Episode): File = File(File(baseDir(ctx), "logs"), "${ep.id}.log")
+
     /**
-     * Seed the bundled Keen 4 shareware. Re-extracts only when this build's
-     * stamp is missing, and never overwrites a file that exists (an imported
-     * registered Keen 4 must survive app updates).
+     * Seed the episodes bundled in the APK (assets/game/<id>): the Keen 4
+     * shareware, plus Keen 6 in the private diagnostic build only. Re-extracts
+     * only when this build's stamp is missing, and never overwrites a file that
+     * exists (an imported registered Keen 4 must survive app updates).
      */
     fun seedShareware(ctx: Context) {
         val base = baseDir(ctx)
         base.mkdirs()
-        val ep = Episodes.byId("keen4")!!
-        val game = gameDir(ctx, ep)
         val stamp = File(base, ".game-installed")
         val want = BuildConfig.VERSION_CODE.toString()
-        if (stamp.isFile && stamp.readText().trim() == want && Episodes.hasGameFiles(game, ep)) return
-        Log.i(TAG, "installing Keen 4 shareware into $game")
-        game.mkdirs()
-        val assetDir = "game/${ep.id}"
-        for (name in ctx.assets.list(assetDir).orEmpty()) {
-            val dest = File(game, name)
-            if (dest.exists()) continue
-            ctx.assets.open("$assetDir/$name").use { input ->
-                dest.outputStream().use { output -> input.copyTo(output) }
+        val bundled = Episodes.ALL.filter { ctx.assets.list("game/${it.id}").orEmpty().isNotEmpty() }
+        if (stamp.isFile && stamp.readText().trim() == want &&
+            bundled.all { Episodes.hasGameFiles(gameDir(ctx, it), it) }) return
+        for (ep in bundled) {
+            val game = gameDir(ctx, ep)
+            Log.i(TAG, "installing bundled ${ep.id} into $game")
+            game.mkdirs()
+            val assetDir = "game/${ep.id}"
+            for (name in ctx.assets.list(assetDir).orEmpty()) {
+                val dest = File(game, name)
+                if (dest.exists()) continue
+                ctx.assets.open("$assetDir/$name").use { input ->
+                    dest.outputStream().use { output -> input.copyTo(output) }
+                }
             }
         }
         stamp.writeText(want)

@@ -73,6 +73,76 @@ class PickerActivity : Activity() {
         super.onResume()
         SystemBars.apply(this)
         rebuild()
+        showEngineError()
+    }
+
+    /**
+     * The engine's Quit() with an error (e.g. a data file it can't read) used to
+     * just end the game process: the player saw a black screen or got bounced
+     * back. KeenActivity's engine log keeps the message ("<log>.error"); show it.
+     */
+    private fun showEngineError() {
+        for (ep in Episodes.ALL) {
+            val err = File(GameSetup.logFile(this, ep).path + ".error")
+            if (!err.isFile) continue
+            val msg = try { err.readText().trim() } catch (e: Exception) { "" }
+            err.delete()
+            AlertDialog.Builder(this)
+                .setTitle("Keen ${ep.num} stopped")
+                .setMessage(msg.ifEmpty { "The engine quit with an error." })
+                .setPositiveButton("OK", null)
+                .setNeutralButton("Share log") { _, _ -> shareLog() }
+                .show()
+            return
+        }
+    }
+
+    /**
+     * Share a debug log as text: the engine logs of the last run of each episode
+     * plus this app's own logcat (both processes; an app can read its own lines).
+     */
+    private fun shareLog() {
+        exec.execute {
+            val sb = StringBuilder()
+            sb.append("keen456-omni ${BuildConfig.VERSION_NAME} (code ${BuildConfig.VERSION_CODE})")
+                .append(if (BuildConfig.KEEN_DIAG) " DIAG" else "").append('\n')
+            sb.append("device ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, Android ")
+                .append(android.os.Build.VERSION.RELEASE).append(" (API ${android.os.Build.VERSION.SDK_INT}), ")
+                .append(android.os.Build.SUPPORTED_ABIS.joinToString()).append('\n')
+            for (ep in Episodes.ALL) {
+                val dir = GameSetup.gameDir(this, ep)
+                sb.append("\n== ${ep.id} files: ")
+                    .append(dir.listFiles()?.sortedBy { it.name }?.joinToString { "${it.name} ${it.length()}" } ?: "none")
+                    .append('\n')
+                val log = GameSetup.logFile(this, ep)
+                if (log.isFile) {
+                    sb.append("== ${ep.id} engine log (${java.util.Date(log.lastModified())}):\n")
+                    sb.append(try { log.readLines().takeLast(400).joinToString("\n") } catch (e: Exception) { e.toString() })
+                    sb.append('\n')
+                }
+            }
+            sb.append("\n== logcat ==\n")
+            try {
+                val p = ProcessBuilder("logcat", "-d", "-v", "threadtime", "-t", "4000")
+                    .redirectErrorStream(true).start()
+                sb.append(p.inputStream.bufferedReader().readText())
+            } catch (e: Exception) {
+                sb.append("logcat failed: $e\n")
+            }
+            val text = sb.toString()
+            try {
+                File(GameSetup.baseDir(this), "logs").mkdirs()
+                File(File(GameSetup.baseDir(this), "logs"), "shared-log.txt").writeText(text)
+            } catch (e: Exception) {
+                Log.w(TAG, "could not save the log: $e")
+            }
+            runOnUiThread {
+                val send = Intent(Intent.ACTION_SEND).setType("text/plain")
+                    .putExtra(Intent.EXTRA_SUBJECT, "keen456-omni log ${BuildConfig.VERSION_NAME}")
+                    .putExtra(Intent.EXTRA_TEXT, text.takeLast(150_000))
+                startActivity(Intent.createChooser(send, "Share log"))
+            }
+        }
     }
 
     private fun rebuild() {
@@ -114,8 +184,17 @@ class PickerActivity : Activity() {
             textSize = 12f
             setPadding(0, dp(12), 0, 0)
         })
+        list.addView(Button(this).apply {
+            text = "Share debug log"
+            isAllCaps = false
+            textSize = 12f
+            setTextColor(dim)
+            setBackgroundColor(Color.parseColor("#0a1426"))
+            setOnClickListener { shareLog() }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)).apply { topMargin = dp(12) })
         list.addView(TextView(this).apply {
-            text = "Build ${BuildConfig.VERSION_NAME} (code ${BuildConfig.VERSION_CODE})"
+            text = "Build ${BuildConfig.VERSION_NAME} (code ${BuildConfig.VERSION_CODE})" +
+                if (BuildConfig.KEEN_DIAG) " · DIAGNOSTIC" else ""
             setTextColor(dim)
             textSize = 11f
             setPadding(0, dp(16), 0, 0)
