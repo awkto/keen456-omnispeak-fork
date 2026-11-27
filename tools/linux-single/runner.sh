@@ -63,12 +63,14 @@ Options:
   --vanilla                 original behaviour: 4:3, no smoothing, no fixes
   --xray                    show hidden passages see-through (F10+H toggles in game)
   --zoom=0|1|2              start zoomed out: 0 normal, 1 = 1.25x, 2 = 1.5x more of the level
+  --camera=0|1|2|3          camera dead zone: 0 vanilla, 1 scaled with the zoom (default),
+                            2 loose, 3 very loose (Keen gets near the edge before it scrolls)
   --fullscreen              start fullscreen (default: windowed; F11 toggles)
   --border                  draw the original cyan EGA border (default: off)
   --data DIR                game files: DIR containing keen4/ keen5/ keen6/ or the .CKx files
                             (or env KEEN_DATA; or put them in ~/.local/share/keen456/data)
   -h, --help                this text
-In game: V cycles the screen filter, Z cycles the zoom (both are remembered).
+In game: V cycles the screen filter, Z the zoom, C the camera dead zone (all remembered).
 Other /ENGINEARGS (e.g. /NOVSYNC /INTEGER /FIX name) go straight to the engine.
 Preferences: put options in ${XDG_CONFIG_HOME:-~/.config}/keen456/args (one per line).
 Saves/config: ${XDG_DATA_HOME:-~/.local/share}/keen456/keen<N>/
@@ -112,7 +114,7 @@ fi
 
 ep=
 case $self_name in keen4|keen5|keen6) ep=${self_name#keen} ;; esac
-wide=16:9 smooth=subpixel camera=1 filter= pixels= zoom= modern=1 vanilla= xray= fs= border= explicit_wide= explicit_smooth= explicit_cam= explicit_ctl=
+wide=16:9 smooth=subpixel camera=1 filter= pixels= zoom= deadzone= modern=1 vanilla= xray= fs= border= explicit_wide= explicit_smooth= explicit_cam= explicit_ctl=
 
 n=$#
 while [ "$n" -gt 0 ]; do
@@ -134,6 +136,8 @@ while [ "$n" -gt 0 ]; do
         --pixels=*) die "bad $a (use crisp light low medium high)" ;;
         --zoom=0|--zoom=1|--zoom=2) zoom=${a#--zoom=} ;;
         --zoom=*) die "bad $a (use 0, 1 or 2)" ;;
+        --camera=0|--camera=1|--camera=2|--camera=3) deadzone=${a#--camera=} ;;
+        --camera=*) die "bad $a (use 0, 1, 2 or 3)" ;;
         --classic-controls) modern=; explicit_ctl=1 ;;
         --vanilla) vanilla=1 ;;
         --xray) xray=1 ;;
@@ -198,6 +202,7 @@ if [ -n "$wide" ]; then G="$G /ASPECT $wide /FIX widescreen"; else G="$G /ASPECT
 [ -n "$pixels" ] && G="$G /PIXELS $pixels"
 [ -n "$xray" ] && G="$G /XRAY"
 [ -n "$zoom" ] && G="$G /ZOOM $zoom"
+[ -n "$deadzone" ] && G="$G /CAMERA $deadzone"
 [ -n "$fs" ] && G="$G /FULLSCREEN"
 [ -n "$border" ] || G="$G /NOBORDER"
 set -f

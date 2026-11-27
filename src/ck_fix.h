@@ -53,6 +53,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	CK_FIX_ENTRY(ModernControls, "modern-controls", true, false, false, "Opt-in: keyboard Alt is a press+release pogo toggle that also jumps (super-bounce), see id_in.c (keen456-decomp #100)") \
 	CK_FIX_ENTRY(Widescreen, "widescreen", true, false, true, "Widescreen aspect modes (16:10, 16:9, fit) show a wider view, and actors wake and act across all of it (keen456-omnispeak-fork #103)") \
 	CK_FIX_ENTRY(Zoom, "zoom", true, false, true, "Zoom out (Z key, /ZOOM 0|1|2): 1.25x or 1.5x more of the level in both directions, and actors wake and act across all of it (keen456-omnispeak-fork #106)") \
+	CK_FIX_ENTRY(CameraDeadzone, "camera-deadzone", true, false, true, "Camera dead zone levels (C key, /CAMERA 0..3): vanilla, scaled with the zoom, loose, very loose; sim because the camera sets where actors wake (keen456-omnispeak-fork #108)") \
 	CK_FIX_ENTRY(Xray, "xray", true, false, false, "Opt-in, display only: draw hidden passages (fore tiles over sprites, no collision) see-through, see /XRAY (keen456-omnispeak-fork #104). Marked sim only so demos and dumps are drawn without it") \
 	CK_FIX_ENTRY(Example, "example", false, false, true, "Example entry: logs one line at startup. Copy it to add a fix.")
 

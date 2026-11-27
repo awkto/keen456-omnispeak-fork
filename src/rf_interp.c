@@ -45,7 +45,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *       *_qpx columns are output pixels (1/4 px, or 1/3 px zoomed out), view_x_u/view_y_u the
  *       view's top-left corner in units (#106).
  *   OMNI_DEBUG_INTERP_SCRIPT="right:0-600,jump:80-90,..."  inject input by sim frame
- *       (keys: right left up down jump pogo fire enter, and v z for the #106 hotkeys).
+ *       (keys: right left up down jump pogo fire enter, and v z c for the #106/#108 hotkeys).
  *   OMNI_DEBUG_INTERP_WARP="sim,tx,ty"  put Keen at a tile at that sim frame (reach map edges, #103).
  *   OMNI_DEBUG_INTERP_STATS=1         frame-time/compose stats to stderr + window title.
  *   OMNI_DEBUG_INTERP_PRESENTS=<file.csv>  one line per presented frame, for the cadence
@@ -208,7 +208,8 @@ static void ParseScript(const char *s)
 			!strcmp(name, "up") ? IN_SC_UpArrow : !strcmp(name, "down") ? IN_SC_DownArrow :
 			!strcmp(name, "jump") ? IN_SC_Control : !strcmp(name, "pogo") ? IN_SC_Alt :
 			!strcmp(name, "fire") ? IN_SC_Space : !strcmp(name, "enter") ? IN_SC_Enter :
-			!strcmp(name, "v") ? IN_SC_V : !strcmp(name, "z") ? IN_SC_Z : 0; /* #106: hotkey tests */
+			!strcmp(name, "v") ? IN_SC_V : !strcmp(name, "z") ? IN_SC_Z :
+			!strcmp(name, "c") ? IN_SC_C : 0; /* #106, #108: hotkey tests */
 		if (key) script[scriptN++] = (ScriptEv){key, a, b};
 		s += n; if (*s == ',') s++;
 	}
