@@ -697,7 +697,7 @@ static void VL_SDL2GL_Present(void *surface, int scrlX, int scrlY, bool singleBu
 	id_glDrawArrays(GL_QUADS, 0, 4);
 #ifdef WITH_RF_INTERP
 	bool ownFrame = false;
-	if (!vl_sdl2gl_argbFrame && VLF_Active())
+	if (!vl_sdl2gl_argbFrame && (VLF_Active() || VLF_LabelActive())) /* #106: hotkey label */
 	{
 		/* Smoothing off but a screen filter on: expand the EGA surface to ARGB and filter it. */
 		static uint32_t frame[VL_EGAVGA_GFX_WIDTH * VL_EGAVGA_GFX_HEIGHT];

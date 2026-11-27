@@ -1601,13 +1601,37 @@ void RFL_UpdateTiles()
  * CK_ViewTilesX) and the presentation agree on what is on screen. */
 bool rf_widePlay;
 
-int RF_ViewWidth(void)
+/* keen456-omnispeak-fork #106: zoom out. Level 1 and 2 show 1.25x and 1.5x the view in both
+ * directions (320x200 -> 400x250 -> 480x300; 16:9 428 -> 536 -> 644 wide), scaled down into the
+ * same window. Like widescreen it is composed by rf_interp.c around the vanilla camera and needs
+ * the 'zoom' fix (a sim fix: actors wake across the whole view, so it is off in demos/dumps). */
+int rf_zoomLevel;
+
+static bool RFL_ZoomActive(void)
 {
 #ifdef WITH_RF_INTERP
-	if (rf_widePlay && vl_displayGameW > 320 && CK_FIX(Widescreen))
-		return vl_displayGameW;
+	return rf_widePlay && rf_zoomLevel > 0 && rf_zoomLevel < RF_ZOOM_LEVELS && CK_FIX(Zoom);
+#else
+	return false;
 #endif
-	return 320;
+}
+
+int RF_ViewWidth(void)
+{
+	int w = 320;
+#ifdef WITH_RF_INTERP
+	if (rf_widePlay && vl_displayGameW > 320 && CK_FIX(Widescreen))
+		w = vl_displayGameW;
+	/* a multiple of 4, rounded up: the extra width splits into even halves (the 2-px grid) */
+	if (RFL_ZoomActive())
+		w = (w * (4 + rf_zoomLevel) + 15) / 16 * 4;
+#endif
+	return w;
+}
+
+int RF_ViewHeight(void)
+{
+	return RFL_ZoomActive() ? 200 * (4 + rf_zoomLevel) / 4 : 200;
 }
 
 int RF_WideViewLeft(int camXUnit, int viewWPx, int bandCamXUnit, int *bandLUnit, int *bandRUnit)
@@ -1638,6 +1662,36 @@ int RF_WideViewLeft(int camXUnit, int viewWPx, int bandCamXUnit, int *bandLUnit,
 	if (bandLUnit) *bandLUnit = bandL;
 	if (bandRUnit) *bandRUnit = bandR;
 	return left;
+}
+
+/* #106: the vertical counterpart of RF_WideViewLeft, for a view viewHPx lines tall: its top edge,
+ * centred on the 200-line camera window, kept between the vertical scroll blocks (and the map
+ * edges) around the real camera bandCamYUnit; centred on that band when the band is shorter.
+ * For viewHPx == 200 this is exactly RF_ClampViewTop. */
+int RF_WideViewTop(int camYUnit, int viewHPx, int bandCamYUnit, int *bandTUnit, int *bandBUnit)
+{
+	int camB = bandCamYUnit + RF_PixelToUnit(200);
+	int bandT = 0, bandB = RF_TileToUnit(rf_mapHeightTiles);
+	for (int i = 0; i < rf_numVertScrollBlocks; ++i)
+	{
+		int b = RF_TileToUnit(rf_vertScrollBlocks[i]);
+		if (b + RF_TileToUnit(1) <= bandCamYUnit && b + RF_TileToUnit(1) > bandT)
+			bandT = b + RF_TileToUnit(1);
+		if (b >= camB && b < bandB)
+			bandB = b;
+	}
+	int h = RF_PixelToUnit(viewHPx), top;
+	if (bandB - bandT >= h)
+	{
+		top = camYUnit - (h - RF_PixelToUnit(200)) / 2;
+		if (top > bandB - h) top = bandB - h;
+		if (top < bandT) top = bandT;
+	}
+	else
+		top = (bandT + bandB - h) / 2;
+	if (bandTUnit) *bandTUnit = bandT;
+	if (bandBUnit) *bandBUnit = bandB;
+	return top;
 }
 
 /* #103 follow-up, presentation only: clamp a displayed camera Y (camYUnit) so the 200-line view

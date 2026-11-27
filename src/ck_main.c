@@ -616,6 +616,10 @@ int main(int argc, char *argv[])
 	VLF_SetFilter((VLF_Filter)CFG_GetConfigEnum("filter", vlf_filterStrings, VLF_Filter_Off));
 	VLF_SetPixels((VLF_Pixels)CFG_GetConfigEnum("pixels", vlf_pixelsStrings, VLF_Pixels_Crisp));
 	vl_aspectMode = CFG_GetConfigEnum("aspectMode", vl_aspectStrings, VL_Aspect_Auto);
+	// Zoom out level (keen456-omnispeak-fork #106); shown only with the 'zoom' fix
+	rf_zoomLevel = CFG_GetConfigInt("zoom", 0);
+	if (rf_zoomLevel < 0 || rf_zoomLevel >= RF_ZOOM_LEVELS)
+		rf_zoomLevel = 0;
 #endif
 #ifdef CK_ENABLE_PLAYLOOP_DUMPER
 	const char *dumperFilename = NULL;
@@ -753,6 +757,13 @@ int main(int argc, char *argv[])
 		else if (!CK_Cross_strcasecmp(argv[i], "/NOINTERP"))
 		{
 			CK_Fix_SetOverride("interpolation", false);
+		}
+		else if (!CK_Cross_strcasecmp(argv[i], "/ZOOM"))
+		{
+			// /ZOOM 0|1|2: starting zoom level (vanilla, out 1, out 2); Z cycles it and saves it (#106)
+			if (i + 1 >= argc || argv[i + 1][0] < '0' || argv[i + 1][0] >= '0' + RF_ZOOM_LEVELS || argv[i + 1][1])
+				Quit("/ZOOM needs 0, 1 or 2");
+			rf_zoomLevel = argv[++i][0] - '0';
 		}
 		else if (!CK_Cross_strcasecmp(argv[i], "/FILTER") || !CK_Cross_strcasecmp(argv[i], "/PIXELS") || !CK_Cross_strcasecmp(argv[i], "/ASPECT"))
 		{

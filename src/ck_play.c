@@ -25,6 +25,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "id_rf.h"
 #ifdef WITH_RF_INTERP
 #include "rf_interp.h"
+#include "id_vl_filter.h"
+#include "id_cfg.h"
 #endif
 #include "id_sd.h"
 #include "id_us.h"
@@ -103,15 +105,87 @@ void CK_ViewTilesX(int *x0, int *x1)
 	*x1 = RF_UnitToTile(CK_Cross_min(right, bandR));
 }
 
+/* keen456-omnispeak-fork #106: the vertical span, the same way. Vanilla: [scroll tile, scroll
+ * tile + 13] (a 208-px window). With the 'zoom' fix active (never in demos or dumps) and a
+ * zoomed-out view: the part of the taller view that shows the map, see RF_WideViewTop. */
+void CK_ViewTilesY(int *y0, int *y1)
+{
+	int h = RF_ViewHeight();
+	if (h == 200)
+	{
+		*y0 = RF_UnitToTile(rf_scrollYUnit);
+		*y1 = RF_UnitToTile(rf_scrollYUnit) + RF_PixelToTile(208);
+		return;
+	}
+	int bandT, bandB;
+	int top = RF_WideViewTop(rf_scrollYUnit, h, rf_scrollYUnit, &bandT, &bandB);
+	int bottom = top + RF_PixelToUnit(h);
+	*y0 = RF_UnitToTile(CK_Cross_max(top, bandT));
+	*y1 = RF_UnitToTile(CK_Cross_min(bottom, bandB));
+}
+
 static void CK_UpdateActiveLimits(void)
 {
-	int x0, x1;
+	int x0, x1, y0, y1;
 	CK_ViewTilesX(&x0, &x1);
+	CK_ViewTilesY(&y0, &y1); // keen456-omnispeak-fork #106
 	ck_activeX0Tile = CK_Cross_max(x0 - CK_INT(CK_activeLimit, DEFAULT_ACTIVE_LIMIT), 0);
 	ck_activeX1Tile = CK_Cross_max(x1 + CK_INT(CK_activeLimit, DEFAULT_ACTIVE_LIMIT), 0);
-	ck_activeY0Tile = CK_Cross_max(RF_UnitToTile(rf_scrollYUnit) - CK_INT(CK_activeLimit, DEFAULT_ACTIVE_LIMIT), 0);
-	ck_activeY1Tile = CK_Cross_max(RF_UnitToTile(rf_scrollYUnit) + RF_PixelToTile(208) + CK_INT(CK_activeLimit, DEFAULT_ACTIVE_LIMIT), 0);
+	ck_activeY0Tile = CK_Cross_max(y0 - CK_INT(CK_activeLimit, DEFAULT_ACTIVE_LIMIT), 0);
+	ck_activeY1Tile = CK_Cross_max(y1 + CK_INT(CK_activeLimit, DEFAULT_ACTIVE_LIMIT), 0);
 }
+
+/* #106: the zoom level changed during play: the deactivation rectangle follows the new view at
+ * once (otherwise only when the camera next scrolls, and newly woken actors would go back to sleep). */
+void CK_ZoomChanged(void)
+{
+	CK_UpdateActiveLimits();
+}
+
+#ifdef WITH_RF_INTERP
+/* keen456-omnispeak-fork #106: in play, a plain V cycles the screen filter and a plain Z the zoom
+ * (vanilla, out 1, out 2), with a short label on screen. Only on the press, never with F10 held
+ * (F10+V / F10+Z are debug keys), and not if the key is bound to a game control. Text entry
+ * (US_LineInput, menus) runs its own loops and never gets here. */
+static bool CK_KeyIsBound(IN_ScanCode sc)
+{
+	for (int i = 0; i < in_key_button_controls + in_key_direction_controls; ++i)
+		if (*in_key_controls[i] == sc)
+			return true;
+	return false;
+}
+
+static void CK_DisplayHotKeys(void)
+{
+	static bool vWas = true, zWas = true; /* a key held on entry is not a press */
+	static const char *filterLabels[VLF_Filter_Count] = {"FILTER: OFF", "FILTER: SCANLINES", "FILTER: CRT",
+		"FILTER: CURVED", "FILTER: RGB", "FILTER: SOFT", "FILTER: AMBER", "FILTER: GREEN"};
+	static const char *zoomLabels[RF_ZOOM_LEVELS] = {"ZOOM: VANILLA", "ZOOM OUT 1", "ZOOM OUT 2"};
+	bool f10 = IN_GetKeyState(IN_SC_F10);
+	bool v = IN_GetKeyState(IN_SC_V), z = IN_GetKeyState(IN_SC_Z);
+	if (v && !vWas && !f10 && !CK_KeyIsBound(IN_SC_V))
+	{
+		VLF_Filter next = (VLF_Filter)((VLF_GetFilter() + 1) % VLF_Filter_Count);
+		VLF_SetFilter(next);
+		CFG_SetConfigEnum("filter", vlf_filterStrings, next);
+		VLF_ShowLabel(filterLabels[next]);
+	}
+	if (z && !zWas && !f10 && !CK_KeyIsBound(IN_SC_Z))
+	{
+		if (!CK_Fix_Enabled(CK_FIX_Zoom))
+			VLF_ShowLabel("ZOOM: ENHANCED PROFILE ONLY");
+		else
+		{
+			rf_zoomLevel = (rf_zoomLevel + 1) % RF_ZOOM_LEVELS;
+			CFG_SetConfigInt("zoom", rf_zoomLevel);
+			CK_ZoomChanged();
+			VLF_ShowLabel(zoomLabels[rf_zoomLevel]);
+		}
+	}
+	vWas = v;
+	zWas = z;
+}
+#endif
 
 void CK_KeenCheckSpecialTileInfo(CK_object *obj);
 
@@ -1209,6 +1283,10 @@ void CK_CheckKeys()
 	}
 #endif
 
+#ifdef WITH_RF_INTERP
+	CK_DisplayHotKeys(); // keen456-omnispeak-fork #106
+#endif
+
 	// TODO: If Paused
 	if (in_Paused)
 	{
@@ -2297,6 +2375,10 @@ void CK_PlayLoop()
 	ck_keenState.jumpWasPressed = ck_keenState.pogoWasPressed = ck_keenState.shootWasPressed = false;
 	game_in_progress = 1;
 	rf_widePlay = true; // keen456-omnispeak-fork #103
+	/* #106: the camera was centred (and the active rectangle set) before the view was wide or
+	 * zoomed out; never in vanilla, demos or dumps, where the view is always 320x200 */
+	if (RF_ViewWidth() != 320 || RF_ViewHeight() != 200)
+		CK_UpdateActiveLimits();
 	// If this is nonzero, the level will quit immediately.
 	ck_gameState.levelState = LS_Playing;
 
@@ -2325,14 +2407,15 @@ void CK_PlayLoop()
 		{
 			/* keen456-omnispeak-fork #103: the 320-px window in vanilla. Per object, as before:
 			 * an earlier object's think (Keen at a door) can move the camera within this loop. */
-			int wakeX0, wakeX1;
+			int wakeX0, wakeX1, wakeY0, wakeY1;
 			CK_ViewTilesX(&wakeX0, &wakeX1);
+			CK_ViewTilesY(&wakeY0, &wakeY1); // #106: the 208-px window in vanilla
 
 			if (!currentObj->active &&
 				(currentObj->clipRects.tileX2 >= wakeX0 - 1) &&
 				(currentObj->clipRects.tileX1 <= wakeX1 + 1) &&
-				(currentObj->clipRects.tileY1 <= RF_UnitToTile(rf_scrollYUnit) + RF_PixelToTile(208) + 1) &&
-				(currentObj->clipRects.tileY2 >= RF_UnitToTile(rf_scrollYUnit) - 1))
+				(currentObj->clipRects.tileY1 <= wakeY1 + 1) &&
+				(currentObj->clipRects.tileY2 >= wakeY0 - 1))
 			{
 				currentObj->active = OBJ_ACTIVE;
 				currentObj->visible = true;

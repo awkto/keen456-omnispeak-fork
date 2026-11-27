@@ -195,6 +195,14 @@ leaving the screen ends the death) and Keen's shot despawn/stun-off-screen (`CK_
 camera follow (144/192 px), scroll limits and the level-exit test are not screen-width dependent
 in the sim and stay vanilla.
 
+**Fork: zoom (#106).** The vertical span is `CK_ViewTilesY`, vanilla exactly `[scroll tile,
+scroll tile + 13]` (208 px). With the `zoom` fix (sim; enhanced; off in demos and dumps) and a
+zoom level above 0, both spans are the visible part of the zoomed-out view (`RF_ViewWidth` /
+`RF_ViewHeight`, placed by `RF_WideViewLeft` / `RF_WideViewTop`, clamped to scroll blocks), and
+feed the same tests as above. A zoom change refreshes the inactivate box at once
+(`CK_ZoomChanged`), and so does the start of the play loop when the view is not 320x200 (the
+camera was centred before the view was wide), so a newly visible actor is not put back to sleep.
+
 ### 3.2 `StateMachine` and `DoActor` (CK_STATE.C:1029-1229). Omnispeak: `CK_RunAction`/`CK_ActionThink`, ck_play.c:500-685
 
 `StateMachine` (CK_STATE.C:1146):

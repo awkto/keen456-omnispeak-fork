@@ -73,6 +73,37 @@ How it works:
   recording and with `/DUMPFILE`, so those show the 320-wide view.
 - Filters lay their scanlines and mask out on the wider game grid the same way.
 
+## Hotkeys and zoom (#106)
+
+In play (the play loop's `CK_CheckKeys`, never in menus, text entry or demos), a plain **V**
+cycles the screen filter (off, scanlines, crt, curved, rgb, soft, amber, green) and a plain **Z**
+cycles the zoom (normal, out 1, out 2); both are saved to the config (`filter`, `zoom`). They do
+nothing while F10 is held (F10+V / F10+Z are debug keys) or when the key is bound to a game
+control. Each shows a label ("FILTER: CRT", "ZOOM OUT 2") for 1.5 s, drawn over the final frame
+after the filters (`VLF_ShowLabel` in id_vl_filter.c), so dumps and captures never contain it;
+while it shows, the plain 320x200 present goes through the filter path too.
+
+Zoom out shows 1.25x (level 1) or 1.5x (level 2) more of the level in both directions, scaled
+down into the same window: 320x200 -> 400x250 -> 480x300, 16:10 384 -> 480 -> 576 wide, 16:9
+428x200 -> 536x250 -> 644x300 (widths rounded up to a multiple of 4, so the 2-px EGA grid lines up).
+`/ZOOM 0|1|2` sets the starting level; the launcher has `--zoom=`.
+
+- It is the widescreen view grown vertically as well: `RF_ViewHeight()` and `RF_WideViewTop`
+  (the vertical twin of `RF_WideViewLeft`) centre the taller view on the 200-line camera window
+  and keep it between the vertical scroll blocks and map edges around the sim camera; where the
+  band is shorter than the view it is centred and the rest is black. For a 200-line view
+  `RF_WideViewTop` is exactly the old `RF_ClampViewTop`.
+- rf_interp.c composes zoomed frames at 3x instead of 4x (480x300 -> 1440x900, 16:9 zoom 2
+  1932x900), so the cost stays close to an unzoomed frame; the backends scale the frame into the
+  same region (its game width is `w * 200 / h`).
+- The scorebox stays in the view's top-left corner (smaller, as everything is). Dialogs, the
+  status window and fades drawn on the 320x200 screen are laid over the camera window inside the
+  zoomed view (`RFI_PresentWideStill`), at the zoomed scale. Menus and text screens stay 320x200.
+- Needs the `zoom` fix (sim, on in `enhanced`; the web launcher always adds `/FIX zoom`): actors
+  wake and act across the whole visible view, vertically too (ACTORS.md §3.1). Forced off in
+  demos and `/DUMPFILE`, so those show the normal view and their traces are unchanged. In the
+  `vanilla` profile Z only shows "ZOOM: ENHANCED PROFILE ONLY".
+
 ## Testing
 
 `OMNI_DEBUG_FILTER_SHOT=<file.ppm>` (with `OMNI_DEBUG_FILTER_SHOT_FRAME=n`) writes the n-th

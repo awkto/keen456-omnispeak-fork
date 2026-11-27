@@ -400,7 +400,7 @@ static void VL_SDL2_Present(void *surface, int scrlX, int scrlY, bool singleBuff
 
 	SDL_BlitSurface(surf, &srcr, vl_sdl2_stagingSurface, 0);
 #ifdef WITH_RF_INTERP
-	if (VLF_Active())
+	if (VLF_Active() || VLF_LabelActive()) /* #106: the hotkey label is drawn there too */
 	{
 		/* Screen filters (#101): hand the 320x200 frame to the filtered 4x path. */
 		SDL_LockSurface(vl_sdl2_stagingSurface);

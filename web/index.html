@@ -35,7 +35,7 @@ Aspect: <select id="aspect"><option value="auto">4:3</option><option value="as-i
 <input type="file" id="indir" webkitdirectory multiple hidden><input type="file" id="infiles" multiple accept=".zip,.CK4,.CK5,.CK6,.ck4,.ck5,.ck6" hidden>
 </div>
 <p style="font-size:.8em;opacity:.7" id="startnote">Click a button to start (this also enables audio). Saves and options persist in this browser.</p>
-<div id="help"><b>Controls:</b> arrows move, Ctrl jump, Alt pogo (with Modern pogo: hold Alt for pogo + jump, let go to release both; a quick tap keeps the pogo on), Space fire, Enter status, Esc menu, F11 or the Fullscreen button for full screen. With X-ray ticked, F10+H turns it off and on in game.<br>
+<div id="help"><b>Controls:</b> arrows move, Ctrl jump, Alt pogo (with Modern pogo: hold Alt for pogo + jump, let go to release both; a quick tap keeps the pogo on), Space fire, Enter status, Esc menu, F11 or the Fullscreen button for full screen. In game, V cycles the screen filter and Z zooms out (normal, out 1, out 2: more of the level). With X-ray ticked, F10+H turns it off and on in game.<br>
 Ctrl+W/T/N and Alt+Tab/Alt+F4 are reserved by the browser or OS and cannot be used in-game.</div>
 <p style="font-size:.75em;opacity:.6">Engine: keen456, a fork of <a style="color:#9cf" href="https://github.com/sulix/omnispeak">Omnispeak</a>, GPL-2 &middot; <a style="color:#9cf" href="omnispeak-src.tar.gz">source for this build</a> &middot; <a style="color:#9cf" href="LICENSE.txt">licence</a>. Commander Keen &copy; id Software.</p>
 </div>
@@ -155,6 +155,7 @@ async function start(ep){
   if(xray.checked) args.push('/XRAY'); // #104: display only; F10+H toggles it in game
   args.push('/FILTER',filter.value,'/PIXELS',pixels.value,'/ASPECT',aspect.value);
   if(['16:10','16:9','fit'].includes(aspect.value)) args.push('/FIX','widescreen'); // #103: wider view, also with smoothing off
+  args.push('/FIX','zoom'); // #106: the Z key zooms out, also with smoothing off (level 0 = normal view)
   {const xa=new URLSearchParams(location.search).get('args'); if(xa) args.push(...xa.trim().split(/\s+/));} // debug/testing: ?args=/TEDLEVEL%201
   canvas.classList.toggle('fill',aspect.value!=='auto'); // explicit aspect: the engine letterboxes inside a full-window canvas
   const M = window.Module = {
