@@ -800,6 +800,9 @@ void CAL_SetupGrFile()
 			QuitF("%s is %d bytes, but this game version's %s points to offset %ld (chunk %d). "
 			      "Your game files don't match: import %s files.",
 				graphName, ca_graphFileSize, headName, maxStart, maxChunk, CAL_SupportedVersions());
+		if (maxStart != ca_graphFileSize)
+			CK_Cross_LogMessage(CK_LOG_MSG_WARNING, "%s is %d bytes, %s's last chunk offset is %ld: the files may not match.\n",
+				graphName, ca_graphFileSize, headName, maxStart);
 	}
 
 	// Read in the graphics headers (from TED's GFXINFOE)
@@ -831,7 +834,9 @@ void CAL_ExpandGrChunk(int chunk, void *source, int compressedLength)
 
 	if (length < 0)
 	{
-		Quit("Tried to expand an invalid chunk! Make sure you're using a compatible version of Keen!");
+		QuitF("Tried to expand an invalid chunk (%d in %s, %d bytes)! Make sure you're using a compatible version of Keen: "
+		      "your game files don't match the tables loaded, import %s files.",
+			chunk, ca_graphFileName, ca_graphFileSize, CAL_SupportedVersions());
 	}
 
 	if (chunk >= ca_gfxInfoE.offSprites && chunk < ca_gfxInfoE.offSprites + ca_gfxInfoE.numSprites)

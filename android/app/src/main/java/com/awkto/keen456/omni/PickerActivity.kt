@@ -256,7 +256,8 @@ class PickerActivity : Activity() {
             } else {
                 action("Import files", true) { importInto(ep) }
             }
-            if (installed) {
+            // Not on the bundled shareware: removing it just brings it back.
+            if (installed && !ep.shareware) {
                 row.addView(Button(this@PickerActivity).apply {
                     text = "⋮"
                     contentDescription = "More: remove game files"
