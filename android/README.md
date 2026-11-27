@@ -24,7 +24,10 @@ Needs JDK 17 and an Android SDK with `platforms;android-34`, `build-tools;34.0.0
    arm64-v8a and x86_64, the shareware, and the Omnispeak tables, and no Keen 5/6 data.
 
 The build is heavy (NDK, two ABIs): run it on a droplet (`tools/droplet.sh`), not on the
-dev host. Release signing is not set up yet (debug APK only).
+dev host. Release signing is not set up yet (debug APK only). Pass
+`KEEN_DEBUG_KEYSTORE=<the kept debug.keystore>` so every build is signed with the same key:
+an APK signed with a different key will not install over the old one, and uninstalling
+wipes the imported game files and saves.
 
 ## How it fits together
 
