@@ -174,10 +174,17 @@ object Settings {
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(Color.parseColor("#081020"))
             setPadding(pad, pad / 2, pad / 2, pad / 2)
-            addView(TextView(ctx).apply {
-                this.text = "Settings"
-                setTextColor(text); textSize = 20f
-                setTypeface(typeface, Typeface.BOLD)
+            addView(LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(TextView(ctx).apply {
+                    this.text = "Settings"
+                    setTextColor(text); textSize = 20f
+                    setTypeface(typeface, Typeface.BOLD)
+                })
+                addView(TextView(ctx).apply {
+                    this.text = "Build ${BuildConfig.VERSION_NAME} (code ${BuildConfig.VERSION_CODE})"
+                    setTextColor(dim); textSize = 11f
+                })
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             addView(Button(ctx).apply {
                 this.text = "Done"

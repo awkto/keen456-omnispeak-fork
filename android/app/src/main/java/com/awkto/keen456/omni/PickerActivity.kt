@@ -114,6 +114,12 @@ class PickerActivity : Activity() {
             textSize = 12f
             setPadding(0, dp(12), 0, 0)
         })
+        list.addView(TextView(this).apply {
+            text = "Build ${BuildConfig.VERSION_NAME} (code ${BuildConfig.VERSION_CODE})"
+            setTextColor(dim)
+            textSize = 11f
+            setPadding(0, dp(16), 0, 0)
+        })
     }
 
     private fun card(ep: Episode, lastPlayed: Boolean): LinearLayout {
