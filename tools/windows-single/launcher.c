@@ -42,10 +42,12 @@ L"  --classic-controls        no modern pogo\n"
 L"  --vanilla                 original behaviour: 4:3, no smoothing, no fixes\n"
 L"  --xray                    hidden passages see-through (F10+H in game)\n"
 L"  --zoom=0|1|2              start zoomed out\n"
+L"  --camera=0|1|2|3          camera dead zone: 0 vanilla, 1 scaled with the zoom (default),\n"
+L"                            2 loose, 3 very loose (Keen gets near the edge before it scrolls)\n"
 L"  --fullscreen              start fullscreen (F11 toggles)\n"
 L"  --border                  draw the original cyan EGA border\n"
 L"  --data DIR                game files (DIR holding keen4/ keen5/ keen6/ or the .CKx files)\n\n"
-L"In game: V cycles the screen filter, Z cycles zoom.\n"
+L"In game: V cycles the screen filter, Z the zoom, C the camera dead zone, F10+H x-ray (V/Z/C remembered).\n"
 L"Extra options: %APPDATA%\\keen456\\args.txt. Saves: %APPDATA%\\keen456\\keen<N>\\";
 
 static int fexists(const wchar_t *p) { return GetFileAttributesW(p) != INVALID_FILE_ATTRIBUTES; }
@@ -186,7 +188,7 @@ int WINAPI wWinMain(HINSTANCE h, HINSTANCE p, LPWSTR cl, int sw)
 
 	int ep = 0, camera = 1, modern = 1, vanilla = 0, xray = 0, fs = 0, border = 0;
 	int ew = 0, es = 0, ec = 0, ectl = 0;
-	wchar_t wide[16] = L"16:9", smooth[16] = L"subpixel", filter[16] = L"", pixels[16] = L"", zoom[4] = L"";
+	wchar_t dz[4] = L"", wide[16] = L"16:9", smooth[16] = L"subpixel", filter[16] = L"", pixels[16] = L"", zoom[4] = L"";
 	wchar_t data_opt[PL] = L"";
 	wchar_t *raw[MAXA]; int nraw = 0;
 	static const wchar_t *flt[] = {L"off", L"scanlines", L"crt", L"curved", L"rgb", L"soft", L"amber", L"green", 0};
@@ -223,6 +225,8 @@ int WINAPI wWinMain(HINSTANCE h, HINSTANCE p, LPWSTR cl, int sw)
 		}
 		else if (IS(L"--zoom=0") || IS(L"--zoom=1") || IS(L"--zoom=2")) wcscpy(zoom, a + 7);
 		else if (PRE(L"--zoom=")) die(L"bad %ls (use 0, 1 or 2)", a);
+		else if (IS(L"--camera=0") || IS(L"--camera=1") || IS(L"--camera=2") || IS(L"--camera=3")) wcscpy(dz, a + 9);
+		else if (PRE(L"--camera=")) die(L"bad %ls (use 0, 1, 2 or 3)", a);
 		else if (IS(L"--classic-controls")) { modern = 0; ectl = 1; }
 		else if (IS(L"--vanilla")) vanilla = 1;
 		else if (IS(L"--xray")) xray = 1;
@@ -300,6 +304,7 @@ int WINAPI wWinMain(HINSTANCE h, HINSTANCE p, LPWSTR cl, int sw)
 	if (pixels[0]) { put(L"/PIXELS"); put(pixels); }
 	if (xray) put(L"/XRAY");
 	if (zoom[0]) { put(L"/ZOOM"); put(zoom); }
+	if (dz[0]) { put(L"/CAMERA"); put(dz); }
 	if (fs) put(L"/FULLSCREEN");
 	if (!border) put(L"/NOBORDER");
 	for (int i = 0; i < nraw; i++) put(raw[i]);
