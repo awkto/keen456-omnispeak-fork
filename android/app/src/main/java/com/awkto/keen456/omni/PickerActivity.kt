@@ -172,27 +172,36 @@ class PickerActivity : Activity() {
 
     /**
      * KeenActivity is singleInstance in its own :game process, and SDL_main can
-     * run only once per process. So a running game of a DIFFERENT episode (or
-     * with changed engine settings) would just be resumed: kill that process
-     * first and start fresh. The same episode with the same settings resumes.
+     * run only once per process. Only a LIVE game process of the same episode
+     * with the same engine settings is resumed; anything else starts a fresh
+     * task (killing a live game of a different episode/settings first).
+     *
+     * The fresh task matters even when no game process is running: after the
+     * engine quits (Quit() = exit()) or the system kills :game, the
+     * singleInstance task record survives (alwaysRetainTaskState) and a plain
+     * startActivity() brings that task back, recreating KeenActivity from its
+     * OLD intent (the previous episode); the new intent only reaches
+     * onNewIntent. That made Keen 6 launch Keen 5 (#102).
      */
     private fun play(ep: Episode) {
         val p = Settings.prefs(this)
         val want = ep.id + "|" + Settings.engineArgs(p).joinToString(" ")
         fun start(fresh: Boolean) {
             val i = Intent(this, KeenActivity::class.java).putExtra(KeenActivity.EXTRA_EPISODE, ep.id)
-            // After a kill the old task record would otherwise be restored with its OLD intent.
             if (fresh) i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            Log.i(TAG, "play ${ep.id} fresh=$fresh")
             startActivity(i)
         }
         val am = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
         val game = am.runningAppProcesses?.firstOrNull { it.processName == "$packageName:game" }
-        if (game != null && p.getString("runningGame", null) != want) {
-            android.os.Process.killProcess(game.pid)
-            // Give the system a moment to drop the dead process's task.
-            android.os.Handler(mainLooper).postDelayed({ start(true) }, 500)
-        } else {
-            start(false)
+        when {
+            game == null -> start(true)
+            p.getString("runningGame", null) == want -> start(false)
+            else -> {
+                android.os.Process.killProcess(game.pid)
+                // Give the system a moment to drop the dead process's task.
+                android.os.Handler(mainLooper).postDelayed({ start(true) }, 500)
+            }
         }
     }
 

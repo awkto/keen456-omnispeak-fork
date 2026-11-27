@@ -55,6 +55,8 @@ object Settings {
     fun xrayAtStart(p: SharedPreferences) = p.getBoolean("xray", false)
     /** The engine's QuickSave/QuickLoad "Really ...? (Y/N)" prompt; off by default (one-tap 💾). */
     fun quickSaveConfirm(p: SharedPreferences) = p.getBoolean("quickSaveConfirm", false)
+    /** The EGA overscan border (cyan in gameplay) round the picture; off by default on a phone. */
+    fun egaBorder(p: SharedPreferences) = p.getBoolean("egaBorder", false)
 
     /** Engine arguments for these settings (episode and paths are added by the caller). */
     fun engineArgs(p: SharedPreferences): List<String> {
@@ -72,6 +74,8 @@ object Settings {
         // Portrait shows a 4:3 pane: never the widescreen view.
         a += listOf("/ASPECT", "4:3")
         a += if (xrayAtStart(p)) "/XRAY" else "/NOXRAY"
+        // On, the engine's default (or its saved "border" option, see GameSetup.prepare).
+        if (!egaBorder(p)) a += "/NOBORDER"
         a += "/VSYNC"
         return a
     }
@@ -145,6 +149,11 @@ object Settings {
             addView(radios(arrayOf("Off: save/load at once (default)", "On: ask Y/N first"),
                 if (quickSaveConfirm(p)) 1 else 0) {
                 p.edit().putBoolean("quickSaveConfirm", it == 1).apply()
+            })
+            addView(header("EGA border (the coloured overscan frame round the picture)"))
+            addView(radios(arrayOf("Off: picture fills the width (default)", "On: like a DOS monitor"),
+                if (egaBorder(p)) 1 else 0) {
+                p.edit().putBoolean("egaBorder", it == 1).apply()
             })
             addView(header("Hardware keyboard Alt"))
             addView(radios(arrayOf("Modern pogo (super-bounce, default)", "Plain pogo key"),
