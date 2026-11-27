@@ -61,6 +61,7 @@ static char ka_errorPath[1024];
 static int ka_pipeRead = -1;
 static pthread_t ka_reader;
 static bool ka_readerUp;
+static volatile bool ka_readerDone;
 static pthread_mutex_t ka_logLock = PTHREAD_MUTEX_INITIALIZER;
 
 static void ka_logLine(const char *line)
@@ -111,6 +112,7 @@ static void *ka_readerMain(void *arg)
 		buf[len] = 0;
 		ka_logLine(buf);
 	}
+	ka_readerDone = true;
 	return NULL;
 }
 
@@ -129,10 +131,8 @@ static void ka_atExit(void)
 		dup2(devnull, 2);
 		close(devnull);
 	}
-	struct timespec until;
-	clock_gettime(CLOCK_REALTIME, &until);
-	until.tv_sec += 1;
-	pthread_timedjoin_np(ka_reader, NULL, &until);
+	for (int i = 0; i < 1000 && !ka_readerDone; ++i) /* up to 1 s */
+		usleep(1000);
 	ka_readerUp = false;
 }
 
