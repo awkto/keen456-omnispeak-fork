@@ -18,7 +18,7 @@ PACKAGER=$(dirname "$(readlink -f "$(command -v emcc)")")/tools/file_packager.py
 [ -f "$PACKAGER" ] || PACKAGER=$(dirname "$(readlink -f "$(command -v emcc)")")/tools/file_packager
 
 cd "$HERE/src"
-make PLATFORM=emscripten RENDERER=sdl2 WITH_KEEN6=1 KEEN6VER="$K6VER" -j"$(nproc)" ../bin-wasm/omnispeak.js
+make PLATFORM=emscripten RENDERER=sdl2 WITH_KEEN6=1 KEEN6VER="$K6VER" -j"${JOBS:-4}" ../bin-wasm/omnispeak.js
 
 DIST=$HERE/dist; rm -rf "$DIST"; mkdir -p "$DIST"
 cp "$HERE"/bin-wasm/omnispeak.{js,wasm} "$DIST"/
