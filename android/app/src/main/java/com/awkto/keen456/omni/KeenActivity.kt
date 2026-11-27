@@ -32,6 +32,7 @@ class KeenActivity : SDLActivity() {
 
     private lateinit var episode: Episode
     private var overlay: TouchOverlayView? = null
+    private var diagView: android.widget.TextView? = null
 
     override fun getLibraries(): Array<String> = arrayOf("SDL2", "main")
 
@@ -112,9 +113,11 @@ class KeenActivity : SDLActivity() {
             isClickable = false
             isFocusable = false
         }
+        // Just under the game pane, over the empty middle of the controls (layoutGame moves it).
         addContentView(tv, android.widget.FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-            android.view.Gravity.BOTTOM))
+            android.view.Gravity.TOP))
+        diagView = tv
         val h = android.os.Handler(mainLooper)
         h.post(object : Runnable {
             override fun run() {
@@ -136,6 +139,8 @@ class KeenActivity : SDLActivity() {
             surface.layoutParams = lp
         }
         if (overlay?.panelTop != gameH.toFloat()) overlay?.panelTop = gameH.toFloat()
+        // Below the XR/Y/N row of the controls.
+        diagView?.translationY = gameH + resources.displayMetrics.density * 64
     }
 
     /**
