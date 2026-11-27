@@ -86,6 +86,18 @@ below). CMake builds also work (`CMakeLists.txt`). Other targets:
 - Docs: [`docs/`](docs/) (interpolation, timing, jitter, actors, refresh manager, data policy).
   Contributor rules: [`AGENTS.md`](AGENTS.md).
 
+### Single-file Linux launcher
+
+`tools/package-linux-single.sh [public|private|both]` builds `keen456`, one self-extracting
+x86_64 executable (engine, bundled SDL2, tables for Keen 4/5/6 incl. v1.5; needs only gzip/tar
+and the usual desktop libs). `./keen456 4|5|6` launches an episode (or symlink it as `keen4`,
+`keen5`, `keen6`). Defaults: subpixel smoothing, camera smoothing, 16:9 widescreen, modern pogo,
+windowed. Options: `--wide[=16:9|16:10|fit]`, `--no-wide`, `--smooth=off|grid|pixel|subpixel`,
+`--filter=NAME`, `--vanilla`, `--xray`, `--fullscreen`, `--data DIR` (or `KEEN_DATA`), any raw
+`/ENGINEARG`; preferences can go in `~/.config/keen456/args`. Saves live in
+`~/.local/share/keen456/keen<N>/`. The public build contains only the Keen 4 shareware; the private
+build with your own K4-K6 data is for the owner and is never published. Run `./keen456 --help`.
+
 ## Related projects
 
 [keen456](https://github.com/awkto/keen456) is a separate, independent DOSBox / js-dos player for the
