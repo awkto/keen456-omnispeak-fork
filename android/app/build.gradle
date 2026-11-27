@@ -51,6 +51,17 @@ android {
         }
     }
 
+    // CI / kept key: -PkeenKeystore=<file> signs the debug build with that (standard debug-key
+    // alias and passwords), independent of where this machine's AGP looks for ~/.android.
+    if (project.hasProperty('keenKeystore')) {
+        signingConfigs.debug {
+            storeFile file(project.property('keenKeystore'))
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false

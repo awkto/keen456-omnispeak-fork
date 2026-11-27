@@ -58,6 +58,7 @@ fi
 echo "== gradle assembleDebug =="
 echo "sdk.dir=$ANDROID_HOME" > android/local.properties
 vargs=()
+[ -n "${KEEN_DEBUG_KEYSTORE:-}" ] && vargs+=("-PkeenKeystore=$(readlink -f "$KEEN_DEBUG_KEYSTORE")")
 [ -n "${KEEN_VERSION_CODE:-}" ] && vargs+=("-PkeenVersionCode=$KEEN_VERSION_CODE")
 [ -n "${KEEN_VERSION_NAME:-}" ] && vargs+=("-PkeenVersionName=$KEEN_VERSION_NAME")
 (cd android && ./gradlew --no-daemon "${vargs[@]}" assembleDebug)
