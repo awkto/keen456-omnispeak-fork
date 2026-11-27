@@ -86,6 +86,13 @@ below). CMake builds also work (`CMakeLists.txt`). Other targets:
 - Docs: [`docs/`](docs/) (interpolation, timing, jitter, actors, refresh manager, data policy).
   Contributor rules: [`AGENTS.md`](AGENTS.md).
 
+### Android APK
+
+Download the latest build: https://github.com/awkto/keen456-omnispeak-fork/releases/latest/download/keen456-omni.apk
+(Keen 4 shareware included; the installed version is shown at the bottom of the picker and in Settings).
+Releases are cut by pushing a tag named `android-YYYY.MM.DD[x]`, which runs
+`.github/workflows/android-release.yml` (build, sign with the stable key, publish `keen456-omni.apk`). See `android/README.md`.
+
 ### Single-file Linux launcher
 
 `tools/package-linux-single.sh [public|private|both]` builds `keen456`, one self-extracting

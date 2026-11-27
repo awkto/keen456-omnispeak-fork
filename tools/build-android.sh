@@ -4,6 +4,7 @@
 # Keen 4 v1.4 shareware (bundled as an asset, never committed), then run Gradle.
 #
 #   tools/build-android.sh            -> dist/keen456-omni-<sha>-debug.apk
+#   KEEN_VERSION_CODE / KEEN_VERSION_NAME set the app's versionCode / versionName (CI does).
 #
 # Needs JDK 17 and an Android SDK (ANDROID_HOME / ANDROID_SDK_ROOT) with
 # platforms;android-34, build-tools;34.0.0, ndk;27.2.12479018 and cmake;3.22.1.
@@ -56,7 +57,10 @@ fi
 
 echo "== gradle assembleDebug =="
 echo "sdk.dir=$ANDROID_HOME" > android/local.properties
-(cd android && ./gradlew --no-daemon assembleDebug)
+vargs=()
+[ -n "${KEEN_VERSION_CODE:-}" ] && vargs+=("-PkeenVersionCode=$KEEN_VERSION_CODE")
+[ -n "${KEEN_VERSION_NAME:-}" ] && vargs+=("-PkeenVersionName=$KEEN_VERSION_NAME")
+(cd android && ./gradlew --no-daemon "${vargs[@]}" assembleDebug)
 
 HASH=${BUILD_HASH:-$(git rev-parse --short HEAD 2>/dev/null || echo local)}
 mkdir -p dist
