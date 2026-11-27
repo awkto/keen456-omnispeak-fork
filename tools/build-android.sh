@@ -5,6 +5,9 @@
 #
 #   tools/build-android.sh            -> dist/keen456-omni-<sha>-debug.apk
 #   KEEN_VERSION_CODE / KEEN_VERSION_NAME set the app's versionCode / versionName (CI does).
+#   KEEN_DIAG=1                       -> diagnostic build: on-screen engine log + watchdog backtraces
+#   KEEN_BUNDLE_K6=<dir with the .CK6 files>  (implies KEEN_DIAG) -> PRIVATE build with Keen 6 data
+#       bundled, dist/keen456-omni-k6debug-<sha>.apk. Commercial data: never publish it.
 #
 # Needs JDK 17 and an Android SDK (ANDROID_HOME / ANDROID_SDK_ROOT) with
 # platforms;android-34, build-tools;34.0.0, ndk;27.2.12479018 and cmake;3.22.1.
@@ -61,11 +64,26 @@ vargs=()
 [ -n "${KEEN_DEBUG_KEYSTORE:-}" ] && vargs+=("-PkeenKeystore=$(readlink -f "$KEEN_DEBUG_KEYSTORE")")
 [ -n "${KEEN_VERSION_CODE:-}" ] && vargs+=("-PkeenVersionCode=$KEEN_VERSION_CODE")
 [ -n "${KEEN_VERSION_NAME:-}" ] && vargs+=("-PkeenVersionName=$KEEN_VERSION_NAME")
+bundle=android/app/build/generated/bundleAssets
+rm -rf "$bundle"
+if [ -n "${KEEN_BUNDLE_K6:-}" ]; then
+    KEEN_DIAG=1
+    mkdir -p "$bundle/game/keen6"
+    for f in EGAGRAPH GAMEMAPS AUDIO; do
+        src=$(find "$KEEN_BUNDLE_K6" -maxdepth 1 -iname "$f.CK6" | head -1)
+        [ -n "$src" ] || { echo "FAIL: $f.CK6 not in $KEEN_BUNDLE_K6" >&2; exit 1; }
+        cp "$src" "$bundle/game/keen6/$f.CK6"
+    done
+    vargs+=("-PkeenBundleAssets=$(readlink -f "$bundle")")
+fi
+[ "${KEEN_DIAG:-}" = 1 ] && vargs+=("-PkeenDiag=true")
 (cd android && ./gradlew --no-daemon "${vargs[@]}" assembleDebug)
 
 HASH=${BUILD_HASH:-$(git rev-parse --short HEAD 2>/dev/null || echo local)}
 mkdir -p dist
-out="dist/keen456-omni-$HASH-debug.apk"
+if [ -n "${KEEN_BUNDLE_K6:-}" ]; then out="dist/keen456-omni-k6debug-$HASH.apk"
+elif [ "${KEEN_DIAG:-}" = 1 ]; then out="dist/keen456-omni-diag-$HASH-debug.apk"
+else out="dist/keen456-omni-$HASH-debug.apk"; fi
 cp android/app/build/outputs/apk/debug/app-debug.apk "$out"
 
 # Sanity: both ABIs and the assets the app needs are inside.
@@ -75,7 +93,10 @@ for f in lib/arm64-v8a/libmain.so lib/arm64-v8a/libSDL2.so lib/x86_64/libmain.so
          assets/omni/keen6e14/EPISODE.CK6 assets/omni/keen6e15/EPISODE.CK6; do
     grep -q " $f\$" <<<"$list" || { echo "FAIL: $f missing from $out" >&2; exit 1; }
 done
-if grep -qiE 'assets/game/keen[56]/|\.exe$' <<<"$list"; then
+if [ -n "${KEEN_BUNDLE_K6:-}" ]; then
+    grep -q " assets/game/keen6/EGAGRAPH.CK6\$" <<<"$list" || { echo "FAIL: bundled Keen 6 missing" >&2; exit 1; }
+    echo "PRIVATE: $out bundles commercial Keen 6 data; never publish it"
+elif grep -qiE 'assets/game/keen[56]/|\.exe$' <<<"$list"; then
     echo "FAIL: commercial data or an executable ended up in $out" >&2; exit 1
 fi
 echo "OK: $out"

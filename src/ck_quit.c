@@ -50,6 +50,11 @@ void Quit(const char *msg)
 	else
 	{
 		CK_Cross_puts(msg);
+#ifdef __ANDROID__
+		// keen456 Android (#102): keep the message for the picker (android/app/jni/keen_android.c)
+		extern void KA_QuitError(const char *msg);
+		KA_QuitError(msg);
+#endif
 		CK_ShutdownID();
 #ifdef WITH_SDL
 #if SDL_VERSION_ATLEAST(1, 3, 0)

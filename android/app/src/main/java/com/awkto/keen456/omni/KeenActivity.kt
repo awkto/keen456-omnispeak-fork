@@ -32,6 +32,7 @@ class KeenActivity : SDLActivity() {
 
     private lateinit var episode: Episode
     private var overlay: TouchOverlayView? = null
+    private var diagView: android.widget.TextView? = null
 
     override fun getLibraries(): Array<String> = arrayOf("SDL2", "main")
 
@@ -66,6 +67,9 @@ class KeenActivity : SDLActivity() {
 
         super.onCreate(savedInstanceState)
         if (KeenGlue.brokenLibraries()) return
+        val log = GameSetup.logFile(this, episode)
+        log.parentFile?.mkdirs()
+        Native.startLog(log.absolutePath, BuildConfig.KEEN_DIAG)
 
         // The accelerometer would otherwise show up as a joystick.
         KeenGlue.setenv("SDL_ACCELEROMETER_AS_JOYSTICK", "0")
@@ -84,12 +88,44 @@ class KeenActivity : SDLActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         }
 
+        if (BuildConfig.KEEN_DIAG) addDiagOverlay(log)
+
         // Size SDL's surface to the 4:3 pane at the top; the overlay owns the rest.
         // The engine reads the renderer output size every present, so it simply
         // fills the smaller surface.
         // The content frame, not the decor: with the bars shown it is the area between them.
         val root = findViewById<View>(android.R.id.content)
         root.addOnLayoutChangeListener { _, l, t, r, b, _, _, _, _ -> layoutGame(r - l, b - t) }
+    }
+
+    /**
+     * Diagnostic builds: the tail of the engine log (its messages and the
+     * watchdog's heartbeat/backtraces) over the bottom of the game pane, so a
+     * black screen still shows what the engine is doing.
+     */
+    private fun addDiagOverlay(log: java.io.File) {
+        val tv = android.widget.TextView(this).apply {
+            setTextColor(android.graphics.Color.parseColor("#9cff9c"))
+            setBackgroundColor(android.graphics.Color.parseColor("#a0000000"))
+            textSize = 9f
+            typeface = android.graphics.Typeface.MONOSPACE
+            maxLines = 14
+            isClickable = false
+            isFocusable = false
+        }
+        // Just under the game pane, over the empty middle of the controls (layoutGame moves it).
+        addContentView(tv, android.widget.FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+            android.view.Gravity.TOP))
+        diagView = tv
+        val h = android.os.Handler(mainLooper)
+        h.post(object : Runnable {
+            override fun run() {
+                val lines = try { log.readLines().takeLast(14) } catch (e: Exception) { listOf("no log: $e") }
+                tv.text = lines.joinToString("\n")
+                h.postDelayed(this, 1000)
+            }
+        })
     }
 
     private fun layoutGame(w: Int, h: Int) {
@@ -103,6 +139,8 @@ class KeenActivity : SDLActivity() {
             surface.layoutParams = lp
         }
         if (overlay?.panelTop != gameH.toFloat()) overlay?.panelTop = gameH.toFloat()
+        // Below the XR/Y/N row of the controls.
+        diagView?.translationY = gameH + resources.displayMetrics.density * 64
     }
 
     /**
