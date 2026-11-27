@@ -309,6 +309,14 @@ int WINAPI wWinMain(HINSTANCE h, HINSTANCE p, LPWSTR cl, int sw)
 	if (!border) put(L"/NOBORDER");
 	for (int i = 0; i < nraw; i++) put(raw[i]);
 
+	{ // debugging aid: KEEN456_DEBUG=<file> logs the omnispeak command line there
+		wchar_t lf[PL];
+		if (GetEnvironmentVariableW(L"KEEN456_DEBUG", lf, PL) > 0) {
+			FILE *f = _wfopen(lf, L"ab, ccs=UTF-8");
+			if (f) { fwprintf(f, L"keen456: exec %ls\n", cmd); fclose(f); }
+		}
+	}
+
 	STARTUPINFOW si = {sizeof si};
 	PROCESS_INFORMATION pi;
 	if (!CreateProcessW(NULL, cmd, NULL, NULL, FALSE, 0, NULL, run, &si, &pi))
