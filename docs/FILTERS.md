@@ -104,6 +104,32 @@ down into the same window: 320x200 -> 400x250 -> 480x300, 16:10 384 -> 480 -> 57
   demos and `/DUMPFILE`, so those show the normal view and their traces are unchanged. In the
   `vanilla` profile Z only shows "ZOOM: ENHANCED PROFILE ONLY".
 
+## Camera dead zone (#108)
+
+How far Keen moves inside the view before the camera follows. A plain **C** in play cycles it
+(same rules as V and Z), with the label "CAMERA: VANILLA / SCALED / LOOSE / VERY LOOSE"; it is
+saved as `camera` in the config. `/CAMERA 0..3` sets it at start (the web launcher's "Camera"
+dropdown, the Linux launcher's `--camera=0..3`, the Android settings "Camera" choice).
+`CK_GetCameraBand` in ck_play.c holds the numbers, in pixels of the 320x200 camera window that
+the (wider, taller) view is centred on; `CK_NormalCamera` uses them in place of vanilla's.
+
+| level | horizontal (Keen's posX) | vertical (feet) |
+|---|---|---|
+| 0 vanilla | 144..192 | 32..168; grounded: eased to 140 (look up/down 33..167) |
+| 1 scaled (default) | vanilla scaled about the window centre by the zoom (1, 1.25, 1.5): zoom 2 = 136..208 | likewise: zoom 2 = -2..202, grounded 160 |
+| 2 loose | the middle half of the view (16:9 zoom 2: 149 px from either edge) | 40 from the top, h/5 from the bottom; grounded: no move while the feet are 45%..75% down the view |
+| 3 very loose | 40 px (2.5 tiles) from either edge | 32 from the top, h/5 from the bottom; grounded: no move from 80 px down to h/5 from the bottom |
+
+Level 1 is the default: unzoomed it is exactly vanilla, zoomed out the band grows with the view,
+so it keeps the vanilla feel. 2 and 3 are for a calmer camera. When the camera does move, it
+moves as before (at most 16 px per tic, then the display smoothing). Airborne, the hard limits
+always apply, so a fast fall scrolls and keeps 3-4 tiles visible below Keen at levels 2 and 3.
+
+Needs the `camera-deadzone` fix (sim, because the camera decides where actors wake: on in
+`enhanced`, forced off in demos and `/DUMPFILE`; the web launcher adds `/FIX camera-deadzone`).
+Actors still wake across the whole visible view, which is centred on the camera window whatever
+the level. In the `vanilla` profile C only shows "CAMERA: ENHANCED PROFILE ONLY".
+
 ## Testing
 
 `OMNI_DEBUG_FILTER_SHOT=<file.ppm>` (with `OMNI_DEBUG_FILTER_SHOT_FRAME=n`) writes the n-th

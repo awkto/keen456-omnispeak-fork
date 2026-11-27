@@ -47,6 +47,8 @@ object Settings {
     fun smoothing(p: SharedPreferences) = p.getString("smoothing", "subpixel") ?: "subpixel"
     fun profile(p: SharedPreferences) = p.getString("profile", "enhanced") ?: "enhanced"
     fun cameraSmoothing(p: SharedPreferences) = p.getBoolean("cameraSmoothing", false)
+    /** Camera dead zone (#108): 0 vanilla, 1 scaled (= vanilla unzoomed), 2 loose, 3 very loose. */
+    fun cameraDeadzone(p: SharedPreferences) = p.getInt("cameraDeadzone", 1).coerceIn(0, 3)
     fun pogoHold(p: SharedPreferences) = p.getString("pogohold", "180") ?: "180"
     fun modernKeyboard(p: SharedPreferences) = p.getBoolean("modernKeyboard", true)
     fun fullscreen(p: SharedPreferences) = p.getBoolean("fullscreen", true)
@@ -67,6 +69,7 @@ object Settings {
             else -> a += listOf("/INTERP", s)
         }
         if (cameraSmoothing(p)) a += listOf("/FIX", "camera-smoothing")
+        a += listOf("/CAMERA", cameraDeadzone(p).toString()) // enhanced profile only (#108)
         // Alt on a hardware keyboard; the touch POGO button is always modern.
         a += if (modernKeyboard(p)) "/MODERNCONTROLS" else "/NOMODERNCONTROLS"
         a += listOf("/POGOHOLD", pogoHold(p).uppercase())
@@ -132,6 +135,11 @@ object Settings {
             addView(header("Camera smoothing"))
             addView(radios(arrayOf("Off (default)", "On"), if (cameraSmoothing(p)) 1 else 0) {
                 p.edit().putBoolean("cameraSmoothing", it == 1).apply()
+            })
+            addView(header("Camera (how far Keen moves before the view follows; enhanced only)"))
+            addView(radios(arrayOf("Vanilla", "Scaled (default; vanilla unless zoomed out)", "Loose", "Very loose"),
+                cameraDeadzone(p)) {
+                p.edit().putInt("cameraDeadzone", it).apply()
             })
             addView(header("Profile"))
             addView(radios(PROFILE_NAMES, idx(PROFILE_KEYS, profile(p))) {

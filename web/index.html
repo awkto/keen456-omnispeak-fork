@@ -22,6 +22,8 @@ canvas.fill{width:100vw;height:100vh}
 <label><input type="checkbox" id="cam" checked> Camera smoothing</label></div>
 <div><label title="Hold Alt: pogo + jump (super-bounce); let go and both release. A quick tap keeps the pogo on."><input type="checkbox" id="mpogo" checked> Modern pogo</label>
 Release after: <select id="pogohold"><option value="120">120 ms</option><option value="150">150 ms</option><option value="180" selected>180 ms</option><option value="240">240 ms</option><option value="300">300 ms</option></select></div>
+<div>Camera: <select id="camera" title="How far Keen can move before the camera follows (C cycles it in game)"><option value="0">Vanilla</option><option value="1" selected>Scaled</option><option value="2">Loose</option><option value="3">Very loose</option></select>
+<label title="The cyan EGA overscan border round the picture"><input type="checkbox" id="border"> EGA border</label></div>
 <div><label title="Display only: hidden passages are drawn see-through with a faint tint. F10+H toggles it in game. Never changes the game."><input type="checkbox" id="xray"> X-ray (reveal secret passages)</label></div>
 <div>Filter: <select id="filter"><option value="off">Off</option><option value="scanlines">Scanlines</option><option value="crt">CRT</option><option value="curved">Curved CRT</option><option value="rgb">RGB mask</option><option value="soft">Soft</option><option value="amber">Amber</option><option value="green">Green</option></select>
 Pixels: <select id="pixels"><option value="crisp">Crisp</option><option value="light">Smooth: light</option><option value="low">Smooth: low</option><option value="medium">Smooth: medium</option><option value="high">Smooth: high</option></select>
@@ -35,7 +37,7 @@ Aspect: <select id="aspect"><option value="auto">4:3</option><option value="as-i
 <input type="file" id="indir" webkitdirectory multiple hidden><input type="file" id="infiles" multiple accept=".zip,.CK4,.CK5,.CK6,.ck4,.ck5,.ck6" hidden>
 </div>
 <p style="font-size:.8em;opacity:.7" id="startnote">Click a button to start (this also enables audio). Saves and options persist in this browser.</p>
-<div id="help"><b>Controls:</b> arrows move, Ctrl jump, Alt pogo (with Modern pogo: hold Alt for pogo + jump, let go to release both; a quick tap keeps the pogo on), Space fire, Enter status, Esc menu, F11 or the Fullscreen button for full screen. In game, V cycles the screen filter and Z zooms out (normal, out 1, out 2: more of the level). With X-ray ticked, F10+H turns it off and on in game.<br>
+<div id="help"><b>Controls:</b> arrows move, Ctrl jump, Alt pogo (with Modern pogo: hold Alt for pogo + jump, let go to release both; a quick tap keeps the pogo on), Space fire, Enter status, Esc menu, F11 or the Fullscreen button for full screen. In game, V cycles the screen filter Z zooms out (normal, out 1, out 2: more of the level) and C cycles the camera (vanilla, scaled, loose, very loose: how far Keen can move before the view follows). With X-ray ticked, F10+H turns it off and on in game.<br>
 Ctrl+W/T/N and Alt+Tab/Alt+F4 are reserved by the browser or OS and cannot be used in-game.</div>
 <p style="font-size:.75em;opacity:.6">Engine: keen456, a fork of <a style="color:#9cf" href="https://github.com/sulix/omnispeak">Omnispeak</a>, GPL-2 &middot; <a style="color:#9cf" href="omnispeak-src.tar.gz">source for this build</a> &middot; <a style="color:#9cf" href="LICENSE.txt">licence</a>. Commander Keen &copy; id Software.</p>
 </div>
@@ -131,12 +133,14 @@ function ls(k,v){try{if(v===undefined)return LS.getItem('keen.'+k);LS.setItem('k
  if(m&&[...smooth.options].some(o=>o.value===m))smooth.value=m;
  if(c!==null&&c!==undefined)cam.checked=c==='1';
 }
-for(const id of ['filter','pixels','aspect','pogohold']){const el=document.getElementById(id),v=new URLSearchParams(location.search).get(id)||ls(id);
+for(const id of ['filter','pixels','aspect','pogohold','camera']){const el=document.getElementById(id),v=new URLSearchParams(location.search).get(id)||ls(id);
  if(v&&[...el.options].some(o=>o.value===v))el.value=v; el.onchange=()=>ls(id,el.value);}
 {const v=ls('mpogo'); if(v!==null&&v!==undefined)mpogo.checked=v==='1';}
 mpogo.onchange=()=>ls('mpogo',mpogo.checked?'1':'0');
 {const v=ls('xray'); if(v!==null&&v!==undefined)xray.checked=v==='1';}
 xray.onchange=()=>ls('xray',xray.checked?'1':'0');
+{const v=ls('border'); if(v!==null&&v!==undefined)border.checked=v==='1';} // off unless ticked
+border.onchange=()=>ls('border',border.checked?'1':'0');
 smooth.onchange=()=>ls('smooth',smooth.value); cam.onchange=()=>ls('cam',cam.checked?'1':'0');
 // fullscreen the stage (not the canvas) so the 4:3 CSS letterboxing keeps applying
 fs.onclick=()=>{(document.fullscreenElement?document.exitFullscreen():stage.requestFullscreen()).then?.(()=>canvas.focus());canvas.focus();};
@@ -156,6 +160,8 @@ async function start(ep){
   args.push('/FILTER',filter.value,'/PIXELS',pixels.value,'/ASPECT',aspect.value);
   if(['16:10','16:9','fit'].includes(aspect.value)) args.push('/FIX','widescreen'); // #103: wider view, also with smoothing off
   args.push('/FIX','zoom'); // #106: the Z key zooms out, also with smoothing off (level 0 = normal view)
+  args.push('/FIX','camera-deadzone','/CAMERA',camera.value); // #108: camera dead zone; C cycles it in game
+  if(!border.checked) args.push('/NOBORDER');
   {const xa=new URLSearchParams(location.search).get('args'); if(xa) args.push(...xa.trim().split(/\s+/));} // debug/testing: ?args=/TEDLEVEL%201
   canvas.classList.toggle('fill',aspect.value!=='auto'); // explicit aspect: the engine letterboxes inside a full-window canvas
   const M = window.Module = {
@@ -180,7 +186,14 @@ async function start(ep){
     let busy=false,again=false;
     const sync=()=>{ if(busy){again=true;return;} busy=true;
       FS.syncfs(false,()=>{busy=false;if(again){again=false;sync();}}); };
-    FS.syncfs(true,err=>{ M.removeRunDependency('idbfs');
+    FS.syncfs(true,err=>{
+      // the launcher owns the border: /NOBORDER turns it off, and ticked must also undo an
+      // in-game Options toggle the engine saved as border = false (as the Android app does)
+      try{const n=FS.readdir('/save').find(f=>f.toUpperCase()==='OMNISPK.CFG')||'OMNISPK.CFG', p='/save/'+n;
+        let t=''; try{t=FS.readFile(p,{encoding:'utf8'});}catch(e){}
+        const lines=t.split('\n').filter(l=>l.trim()&&!/^\s*border\s*=/i.test(l));
+        lines.push('border = '+(border.checked?'true':'false')); FS.writeFile(p,lines.join('\n')+'\n');}catch(e){console.warn('border cfg: '+e);}
+      M.removeRunDependency('idbfs');
       setInterval(sync,3000);
       // options/key config are only written at game quit otherwise: ask the game to write them (it polls Module.saveReq)
       setInterval(()=>{M.saveReq=1;},3000);

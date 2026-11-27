@@ -621,6 +621,10 @@ int main(int argc, char *argv[])
 	if (rf_zoomLevel < 0 || rf_zoomLevel >= RF_ZOOM_LEVELS)
 		rf_zoomLevel = 0;
 #endif
+	// Camera dead zone level (keen456-omnispeak-fork #108); used only with the 'camera-deadzone' fix
+	ck_cameraLevel = CFG_GetConfigInt("camera", 1);
+	if (ck_cameraLevel < 0 || ck_cameraLevel >= CK_CAMERA_LEVELS)
+		ck_cameraLevel = 1;
 #ifdef CK_ENABLE_PLAYLOOP_DUMPER
 	const char *dumperFilename = NULL;
 #endif
@@ -764,6 +768,13 @@ int main(int argc, char *argv[])
 			if (i + 1 >= argc || argv[i + 1][0] < '0' || argv[i + 1][0] >= '0' + RF_ZOOM_LEVELS || argv[i + 1][1])
 				Quit("/ZOOM needs 0, 1 or 2");
 			rf_zoomLevel = argv[++i][0] - '0';
+		}
+		else if (!CK_Cross_strcasecmp(argv[i], "/CAMERA"))
+		{
+			// /CAMERA 0..3: camera dead zone (vanilla, scaled, loose, very loose); C cycles it (#108)
+			if (i + 1 >= argc || argv[i + 1][0] < '0' || argv[i + 1][0] >= '0' + CK_CAMERA_LEVELS || argv[i + 1][1])
+				Quit("/CAMERA needs 0, 1, 2 or 3");
+			ck_cameraLevel = argv[++i][0] - '0';
 		}
 		else if (!CK_Cross_strcasecmp(argv[i], "/FILTER") || !CK_Cross_strcasecmp(argv[i], "/PIXELS") || !CK_Cross_strcasecmp(argv[i], "/ASPECT"))
 		{

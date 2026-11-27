@@ -157,7 +157,8 @@ static bool CK_KeyIsBound(IN_ScanCode sc)
 
 static void CK_DisplayHotKeys(void)
 {
-	static bool vWas = true, zWas = true; /* a key held on entry is not a press */
+	static bool vWas = true, zWas = true, cWas = true; /* a key held on entry is not a press */
+	static const char *cameraLabels[CK_CAMERA_LEVELS] = {"CAMERA: VANILLA", "CAMERA: SCALED", "CAMERA: LOOSE", "CAMERA: VERY LOOSE"};
 	static const char *filterLabels[VLF_Filter_Count] = {"FILTER: OFF", "FILTER: SCANLINES", "FILTER: CRT",
 		"FILTER: CURVED", "FILTER: RGB", "FILTER: SOFT", "FILTER: AMBER", "FILTER: GREEN"};
 	static const char *zoomLabels[RF_ZOOM_LEVELS] = {"ZOOM: VANILLA", "ZOOM OUT 1", "ZOOM OUT 2"};
@@ -182,8 +183,22 @@ static void CK_DisplayHotKeys(void)
 			VLF_ShowLabel(zoomLabels[rf_zoomLevel]);
 		}
 	}
+	/* #108: a plain C cycles the camera dead zone (vanilla, scaled, loose, very loose) */
+	bool c = IN_GetKeyState(IN_SC_C);
+	if (c && !cWas && !f10 && !CK_KeyIsBound(IN_SC_C))
+	{
+		if (!CK_Fix_Enabled(CK_FIX_CameraDeadzone))
+			VLF_ShowLabel("CAMERA: ENHANCED PROFILE ONLY");
+		else
+		{
+			ck_cameraLevel = (ck_cameraLevel + 1) % CK_CAMERA_LEVELS;
+			CFG_SetConfigInt("camera", ck_cameraLevel);
+			VLF_ShowLabel(cameraLabels[ck_cameraLevel]);
+		}
+	}
 	vWas = v;
 	zWas = z;
+	cWas = c;
 }
 #endif
 
@@ -2095,7 +2110,68 @@ extern int rf_scrollYUnit;
 
 // The intended y-coordinate of the bottom of the keen sprite
 // in pixels from the top of the screen.
-static uint16_t screenYpx;
+// keen456-omnispeak-fork #108: signed, as a zoomed-out camera can aim above the 200-line window.
+static int16_t screenYpx;
+
+/* keen456-omnispeak-fork #108: the camera dead zone. All values are in pixels of the vanilla
+ * 320x200 camera window (rf_scrollX/YUnit is its top left); a wider or taller view is centred
+ * on that window (RF_WideViewLeft/Top), so it spans [-ox, 320 + ox] x [-oy, 200 + oy].
+ *   x0, x1      Keen's posX is kept between these (vanilla 144..192)
+ *   y0, y1      his feet (clipRects.unitY2) between these, always (vanilla 32..168)
+ *   rest        the grounded feet height Keen is brought back to (vanilla 140)
+ *   g0, g1      level >= 2: grounded, the camera only moves when his feet leave this band
+ *               (vanilla: no band, it always eases them to 'rest' / the look position)
+ *   look0/1     looking up / down moves the feet target down to look1 / up to look0 (33..167) */
+typedef struct CK_CameraBand
+{
+	int x0, x1, y0, y1, rest, g0, g1, look0, look1;
+	bool band;
+} CK_CameraBand;
+
+int ck_cameraLevel = 1;
+
+static int CK_CameraLevel(void)
+{
+	return (ck_cameraLevel > 0 && ck_cameraLevel < CK_CAMERA_LEVELS && CK_FIX(CameraDeadzone)) ? ck_cameraLevel : 0;
+}
+
+static void CK_GetCameraBand(CK_CameraBand *b)
+{
+	int level = CK_CameraLevel();
+	int w = RF_ViewWidth(), h = RF_ViewHeight();
+	int ox = (w - 320) / 2, oy = (h - 200) / 2;
+	b->band = false;
+	switch (level)
+	{
+	default: // 0: vanilla, exactly
+		b->x0 = 144; b->x1 = 192; b->y0 = 32; b->y1 = 168;
+		b->rest = 140; b->look0 = 33; b->look1 = 167;
+		break;
+	case 1: // scaled: the vanilla numbers scaled about the window centre by the zoom (h / 200),
+		// so 1.0 (identical to vanilla) unzoomed, 1.25x and 1.5x zoomed out
+		b->x0 = 160 - 16 * h / 200; b->x1 = 160 + 32 * h / 200;
+		b->y0 = 100 - 68 * h / 200; b->y1 = 100 + 68 * h / 200;
+		b->rest = 100 + 40 * h / 200;
+		b->look0 = 100 - 67 * h / 200; b->look1 = 100 + 67 * h / 200;
+		break;
+	case 2: // loose: Keen roams the middle half of the view across, the middle ~30% up and down
+		b->x0 = -ox + w / 4 - 12; b->x1 = 320 + ox - w / 4 - 12;
+		b->y0 = -oy + 40; b->y1 = 200 + oy - h / 5; // falling: still see 3-4 tiles below him
+		b->rest = -oy + h * 70 / 100;
+		b->g0 = -oy + h * 45 / 100; b->g1 = -oy + h * 75 / 100;
+		b->look0 = -oy + 33; b->look1 = 200 + oy - 33;
+		b->band = true;
+		break;
+	case 3: // very loose: up to 2.5 tiles from the sides, 5 tiles from the top, h / 5 from the bottom
+		b->x0 = -ox + 40; b->x1 = 320 + ox - 40 - 24;
+		b->y0 = -oy + 32; b->y1 = 200 + oy - h / 5;
+		b->rest = -oy + h * 70 / 100;
+		b->g0 = -oy + 80; b->g1 = b->y1;
+		b->look0 = -oy + 33; b->look1 = 200 + oy - 33;
+		b->band = true;
+		break;
+	}
+}
 
 // Centre the camera on the given object.
 
@@ -2196,6 +2272,8 @@ void CK_NormalCamera(CK_object *obj)
 {
 
 	int16_t deltaX = 0, deltaY = 0; // in Units
+	CK_CameraBand cb; // keen456-omnispeak-fork #108: vanilla numbers unless the fix is on
+	CK_GetCameraBand(&cb);
 
 	//TODO: some unknown var must be 0
 	//This var is a "ScrollDisabled flag." If keen dies, it's set so he
@@ -2221,21 +2299,21 @@ void CK_NormalCamera(CK_object *obj)
 	}
 
 	// Keep keen's x-coord between 144-192 pixels
-	if (obj->posX < (rf_scrollXUnit + RF_PixelToUnit(144)))
-		deltaX = obj->posX - (rf_scrollXUnit + RF_PixelToUnit(144));
+	if (obj->posX < (rf_scrollXUnit + RF_PixelToUnit(cb.x0)))
+		deltaX = obj->posX - (rf_scrollXUnit + RF_PixelToUnit(cb.x0));
 
-	if (obj->posX > (rf_scrollXUnit + RF_PixelToUnit(192)))
-		deltaX = obj->posX - (rf_scrollXUnit + RF_PixelToUnit(192));
+	if (obj->posX > (rf_scrollXUnit + RF_PixelToUnit(cb.x1)))
+		deltaX = obj->posX - (rf_scrollXUnit + RF_PixelToUnit(cb.x1));
 
 	// Keen should be able to look up and down.
 	if (obj->currentAction == CK_ACTION(CK_ACT_keenLookUp2))
 	{
 		int16_t pxToMove;
-		if (screenYpx + SD_GetSpriteSync() > 167)
+		if (screenYpx + SD_GetSpriteSync() > cb.look1)
 		{
 			// Keen should never be so low on the screen that his
 			// feet are more than 167 px from the top.
-			pxToMove = 167 - screenYpx;
+			pxToMove = cb.look1 - screenYpx;
 		}
 		else
 		{
@@ -2248,11 +2326,11 @@ void CK_NormalCamera(CK_object *obj)
 	else if (obj->currentAction == CK_ACTION(CK_ACT_keenLookDown3))
 	{
 		int16_t pxToMove;
-		if (screenYpx - SD_GetSpriteSync() < 33)
+		if (screenYpx - SD_GetSpriteSync() < cb.look0)
 		{
 			// Keen should never be so high on the screen that his
 			// feet are fewer than 33 px from the top.
-			pxToMove = screenYpx - 33;
+			pxToMove = screenYpx - cb.look0;
 		}
 		else
 		{
@@ -2282,12 +2360,23 @@ void CK_NormalCamera(CK_object *obj)
 			obj->currentAction != CK_ACTION(CK_ACT_keenPull3) &&
 			obj->currentAction != CK_ACTION(CK_ACT_keenPull4))
 		{
-			deltaY += obj->deltaPosY;
+			bool aimAtFeet = false;
+			if (!cb.band)
+				deltaY += obj->deltaPosY;
+			else if (obj->currentAction != CK_ACTION(CK_ACT_keenLookUp2) &&
+				obj->currentAction != CK_ACTION(CK_ACT_keenLookDown3))
+			{
+				/* #108: a loose camera stays put while his feet are inside the grounded band,
+				 * and eases them back to its nearer edge (below) once they leave it */
+				int feetPx = RF_UnitToPixel(obj->clipRects.unitY2 - (rf_scrollYUnit + deltaY));
+				screenYpx = feetPx < cb.g0 ? cb.g0 : feetPx > cb.g1 ? cb.g1 : feetPx;
+				aimAtFeet = screenYpx == feetPx; // inside: no move at all (no pixel rounding)
+			}
 
 			//TODO: Something hideous
 			// TODO: Convert to 16-bit once the rest is converted
 			// (due to unsigned vs signed mess)
-			int cmpAmt = RF_PixelToUnit(screenYpx) + rf_scrollYUnit + deltaY;
+			int cmpAmt = aimAtFeet ? obj->clipRects.unitY2 : RF_PixelToUnit(screenYpx) + rf_scrollYUnit + deltaY;
 			if (cmpAmt != obj->clipRects.unitY2)
 			{
 				int oneDiff, otherDiff;
@@ -2330,15 +2419,15 @@ void CK_NormalCamera(CK_object *obj)
 	else
 	{
 		// Reset to 140px.
-		screenYpx = 140;
+		screenYpx = cb.rest;
 	}
 
 	// Scroll the screen to keep keen between 33 and 167 px.
-	if (obj->clipRects.unitY2 < (rf_scrollYUnit + deltaY + RF_PixelToUnit(32)))
-		deltaY += obj->clipRects.unitY2 - (rf_scrollYUnit + deltaY + RF_PixelToUnit(32));
+	if (obj->clipRects.unitY2 < (rf_scrollYUnit + deltaY + RF_PixelToUnit(cb.y0)))
+		deltaY += obj->clipRects.unitY2 - (rf_scrollYUnit + deltaY + RF_PixelToUnit(cb.y0));
 
-	if (obj->clipRects.unitY2 > (rf_scrollYUnit + deltaY + RF_PixelToUnit(168)))
-		deltaY += obj->clipRects.unitY2 - (rf_scrollYUnit + deltaY + RF_PixelToUnit(168));
+	if (obj->clipRects.unitY2 > (rf_scrollYUnit + deltaY + RF_PixelToUnit(cb.y1)))
+		deltaY += obj->clipRects.unitY2 - (rf_scrollYUnit + deltaY + RF_PixelToUnit(cb.y1));
 
 	//Don't scroll more than one tile's worth per frame.
 	if (deltaX || deltaY)
