@@ -47,6 +47,13 @@ if ! [ -f "$assets/EGAGRAPH.CK4" ] || ! [ -f "$assets/GAMEMAPS.CK4" ] || ! [ -f 
 fi
 bash tools/check-no-data.sh
 
+# A fresh droplet makes a new debug key, and Android refuses to update an APK signed with
+# another key (uninstalling wipes the player's imported files and saves). Sign every build
+# with one kept key: KEEN_DEBUG_KEYSTORE (on pro: ~/.config/keen456/debug.keystore, never committed).
+if [ -n "${KEEN_DEBUG_KEYSTORE:-}" ]; then
+    mkdir -p "$HOME/.android" && cp "$KEEN_DEBUG_KEYSTORE" "$HOME/.android/debug.keystore"
+fi
+
 echo "== gradle assembleDebug =="
 echo "sdk.dir=$ANDROID_HOME" > android/local.properties
 (cd android && ./gradlew --no-daemon assembleDebug)

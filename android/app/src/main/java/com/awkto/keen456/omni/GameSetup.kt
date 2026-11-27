@@ -68,7 +68,11 @@ object GameSetup {
         }
         val save = saveDir(ctx, ep)
         save.mkdirs()
-        setConfig(save, "ck_quickSaveConfirm", if (Settings.quickSaveConfirm(Settings.prefs(ctx))) "true" else "false")
+        val prefs = Settings.prefs(ctx)
+        setConfig(save, "ck_quickSaveConfirm", if (Settings.quickSaveConfirm(prefs)) "true" else "false")
+        // The app setting owns the border: /NOBORDER turns it off, and "on" must also
+        // undo an in-game Options toggle the engine saved as border = false.
+        setConfig(save, "border", if (Settings.egaBorder(prefs)) "true" else "false")
         Log.i(TAG, "prepared ${ep.id} in $game (tables $set)")
         return null
     }
