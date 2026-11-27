@@ -20,6 +20,9 @@
 #include <sys/syscall.h>
 #include <android/log.h>
 
+#include <SDL.h>
+#include <SDL_system.h>
+
 #include "id_heads.h"
 #include "id_in.h"
 #include "id_rf.h"
@@ -255,6 +258,39 @@ void KA_QuitError(const char *msg)
 		fputs(msg, f);
 		fclose(f);
 	}
+}
+
+/* Called by Quit() (src/ck_quit.c) instead of exit() once the engine has shut
+ * down (#102). exit() runs atexit handlers and static destructors while Android's
+ * own threads (HWUI's RenderThread, SDL's audio/Java glue) are still running,
+ * which crashed on quit (SIGSEGV in RenderThread after an error). Instead: push
+ * the last log lines out, ask the activity to finish (its task is removed, so the
+ * picker comes back), then end the :game process with _exit(). */
+void KA_Exit(int code)
+{
+	ka_atExit();
+	JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+	jobject activity = env ? (jobject)SDL_AndroidGetActivity() : NULL;
+	if (activity)
+	{
+		jclass cls = (*env)->GetObjectClass(env, activity);
+		jmethodID finish = cls ? (*env)->GetMethodID(env, cls, "finishAndRemoveTask", "()V") : NULL;
+		if (!finish)
+		{
+			(*env)->ExceptionClear(env);
+			finish = cls ? (*env)->GetMethodID(env, cls, "finish", "()V") : NULL;
+		}
+		if (finish)
+			(*env)->CallVoidMethod(env, activity, finish);
+		if ((*env)->ExceptionCheck(env))
+			(*env)->ExceptionClear(env);
+		(*env)->DeleteLocalRef(env, activity);
+		if (cls)
+			(*env)->DeleteLocalRef(env, cls);
+		usleep(150 * 1000); /* let the finish reach the system before the process goes */
+	}
+	__android_log_print(ANDROID_LOG_INFO, LOG_TAG, "engine quit (code %d): ending the game process", code);
+	_exit(code);
 }
 
 /* com.awkto.keen456.omni.Native.nativeStartLog: call once per process, before SDL_main. */

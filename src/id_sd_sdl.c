@@ -437,9 +437,11 @@ int SD_SDL_t0InterruptThread(void *param)
 
 		if (currPitTicks >= SD_SDL_nextTickAt)
 		{
-			SDL_LockAudio();
+			if (SD_SDL_AudioSubsystem_Up)
+				SDL_LockAudio();
 			SDL_t0Service();
-			SDL_UnlockAudio();
+			if (SD_SDL_AudioSubsystem_Up)
+				SDL_UnlockAudio();
 			if (!SD_SDL_WaitTicksSpin)
 				SDL_CondBroadcast(SD_SDL_TimerConditionVar);
 			SD_SDL_nextTickAt += SD_SDL_timerDivisor;
@@ -615,18 +617,24 @@ void SD_SDL_Startup(void)
 
 void SD_SDL_Shutdown(void)
 {
-	if (SD_SDL_AudioSubsystem_Up)
-	{
-		SDL_CloseAudio();
-		SDL_QuitSubSystem(SDL_INIT_AUDIO);
-		SD_SDL_AudioSubsystem_Up = false;
-	}
+	/* Stop and join the t0 interrupt thread BEFORE closing audio: it calls
+	 * SDL_LockAudio(), and locking the audio device's mutex after
+	 * SDL_CloseAudio() destroyed it aborts on Android (FORTIFY) and is
+	 * undefined everywhere else. */
 	if (SD_SDL_useTimerFallback)
 	{
 		SD_SDL_useTimerFallback = false;
 #ifndef __EMSCRIPTEN__
-		SDL_WaitThread(SD_SDL_t0Thread, NULL);
+		if (SD_SDL_t0Thread)
+			SDL_WaitThread(SD_SDL_t0Thread, NULL);
+		SD_SDL_t0Thread = NULL;
 #endif
+	}
+	if (SD_SDL_AudioSubsystem_Up)
+	{
+		SD_SDL_AudioSubsystem_Up = false;
+		SDL_CloseAudio();
+		SDL_QuitSubSystem(SDL_INIT_AUDIO);
 	}
 }
 

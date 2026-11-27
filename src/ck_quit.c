@@ -45,6 +45,11 @@ void Quit(const char *msg)
 		else
 			CK_Cross_LogMessage(CK_LOG_MSG_NORMAL, "Thanks for playing Commander Keen!\n");
 		CK_ShutdownID();
+#ifdef __ANDROID__
+		// keen456 Android (#102): finish the activity and _exit, see android/app/jni/keen_android.c
+		extern void KA_Exit(int code);
+		KA_Exit(0);
+#endif
 		exit(0);
 	}
 	else
@@ -53,9 +58,14 @@ void Quit(const char *msg)
 #ifdef __ANDROID__
 		// keen456 Android (#102): keep the message for the picker (android/app/jni/keen_android.c)
 		extern void KA_QuitError(const char *msg);
+		extern void KA_Exit(int code);
 		KA_QuitError(msg);
 #endif
 		CK_ShutdownID();
+#ifdef __ANDROID__
+		// The picker shows the message (KA_QuitError) once the game process is gone.
+		KA_Exit(1);
+#endif
 #ifdef WITH_SDL
 #if SDL_VERSION_ATLEAST(1, 3, 0)
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Omnispeak", msg, NULL);

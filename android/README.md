@@ -45,8 +45,13 @@ wipes the imported game files and saves.
 - **PickerActivity** (launcher): three episode cards. Keen 4 shareware is bundled and plays
   at once. Keen 5/6, and the registered Keen 4, are imported from the player's own files
   through the Storage Access Framework (folder or .zip): only `EGAGRAPH`, `GAMEMAPS`,
-  `AUDIO.CK<n>` are copied into app storage. Keen 6 v1.4 / v1.5 is detected from the size of
-  `EGAGRAPH.CK6`. ⚙ Settings.
+  `AUDIO.CK<n>` are copied into app storage. Imports are staged and validated first: the
+  three file sizes must match a supported release exactly (K4 v1.4, K5 v1.4, K6 v1.4 / v1.5;
+  the sizes are derived from the bundled tables: EGAHEAD's last offset, AUDIOHHD's last
+  offset, MAPHEAD's last header + 42). A match replaces all of the episode's old data files; anything
+  else is refused with the sizes found and the old files are kept. Play re-checks and offers
+  Re-import / Remove instead of launching into a black screen; ⋮ on a card removes its files.
+  ⚙ Settings.
 - **KeenActivity** (an `SDLActivity`, own `:game` process) runs the engine with
   `/EPISODE n /GAMEPATH <game dir> /USERPATH <save dir>` plus the settings; by default
   `/PROFILE enhanced /INTERP subpixel /MODERNCONTROLS /POGOHOLD 180 /FILTER off /PIXELS crisp

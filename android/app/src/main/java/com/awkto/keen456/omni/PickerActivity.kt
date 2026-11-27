@@ -51,6 +51,7 @@ class PickerActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         importTarget = savedInstanceState?.getString("importTarget")?.let { Episodes.byId(it) }
+        Releases.init(this)
         exec.execute { GameSetup.seedShareware(this); runOnUiThread { rebuild() } }
 
         list = LinearLayout(this).apply {
@@ -179,7 +180,8 @@ class PickerActivity : Activity() {
             text = "Keen 4 shareware is included. Own the registered Keen 4? Import its files to " +
                 "play the full game (your saves are kept). Keen 5 and 6 are commercial: import " +
                 "your own copy (a folder or .zip holding EGAGRAPH, GAMEMAPS and AUDIO .CK files, " +
-                "v1.4; Keen 6 v1.4 or v1.5)."
+                "v1.4; Keen 6 v1.4 or v1.5). Files that don't match a supported version are refused; " +
+                "⋮ on a card removes its game files."
             setTextColor(dim)
             textSize = 12f
             setPadding(0, dp(12), 0, 0)
@@ -203,7 +205,9 @@ class PickerActivity : Activity() {
 
     private fun card(ep: Episode, lastPlayed: Boolean): LinearLayout {
         val accent = Color.parseColor(ACCENTS[ep.id] ?: "#e8b84b")
-        val ready = Episodes.hasGameFiles(GameSetup.gameDir(this, ep), ep) || ep.shareware
+        val installed = Episodes.hasGameFiles(GameSetup.gameDir(this, ep), ep)
+        val check = Releases.check(GameSetup.gameDir(this, ep), ep)
+        val ready = installed || ep.shareware
 
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -223,13 +227,14 @@ class PickerActivity : Activity() {
             })
             addView(TextView(this@PickerActivity).apply {
                 text = when {
+                    installed && !check.ok -> "⚠ Installed files don't match a supported version: re-import or remove them"
                     ep.shareware && GameSetup.isFullVersion(this@PickerActivity, ep) ->
                         "Registered version: your game files are installed"
                     ep.shareware -> "Shareware, included · registered version can be imported"
-                    ready -> "Your game files are installed"
+                    ready -> "Your game files are installed (${check.release?.label})"
                     else -> "Needs your game files"
                 }
-                setTextColor(dim)
+                setTextColor(if (installed && !check.ok) Color.parseColor("#ffb070") else dim)
                 textSize = 12f
                 setPadding(0, dp(2), 0, dp(8))
             })
@@ -251,8 +256,47 @@ class PickerActivity : Activity() {
             } else {
                 action("Import files", true) { importInto(ep) }
             }
+            // Not on the bundled shareware: removing it just brings it back.
+            if (installed && !ep.shareware) {
+                row.addView(Button(this@PickerActivity).apply {
+                    text = "⋮"
+                    contentDescription = "More: remove game files"
+                    textSize = 18f
+                    setTextColor(textCol)
+                    setBackgroundColor(Color.parseColor("#0a1426"))
+                    setOnClickListener { moreMenu(ep) }
+                }, LinearLayout.LayoutParams(dp(44), dp(44)))
+                setOnLongClickListener { moreMenu(ep); true }
+            }
             addView(row)
         }
+    }
+
+    /** The card's ⋮ menu (or a long-press on the card). */
+    private fun moreMenu(ep: Episode) {
+        AlertDialog.Builder(this)
+            .setTitle("Keen ${ep.num}")
+            .setItems(arrayOf("Remove game files")) { _, _ -> confirmRemove(ep) }
+            .show()
+    }
+
+    /** Clear a broken (or unwanted) import. Saves live elsewhere and are kept. */
+    private fun confirmRemove(ep: Episode) {
+        val note = if (ep.shareware) " The bundled Keen 4 shareware comes back in their place." else ""
+        AlertDialog.Builder(this)
+            .setTitle("Remove Keen ${ep.num} game files?")
+            .setMessage("Deletes ${ep.dataFiles.joinToString()} from the app's storage. Your saved games are kept.$note")
+            .setPositiveButton("Remove") { _, _ ->
+                exec.execute {
+                    GameSetup.removeGameFiles(this, ep)
+                    runOnUiThread {
+                        Toast.makeText(this, "Keen ${ep.num} game files removed", Toast.LENGTH_SHORT).show()
+                        rebuild()
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     /**
@@ -269,6 +313,19 @@ class PickerActivity : Activity() {
      * onNewIntent. That made Keen 6 launch Keen 5 (#102).
      */
     private fun play(ep: Episode) {
+        val check = Releases.check(GameSetup.gameDir(this, ep), ep)
+        if (!check.ok && !ep.shareware) {
+            // Don't launch into a black screen (#102): say what is wrong and offer the fixes.
+            AlertDialog.Builder(this)
+                .setTitle("Keen ${ep.num} can't start")
+                .setMessage("Keen ${ep.num} files don't match a supported version, so the game " +
+                    "would not run.\n\n${check.problem()}\n\nRe-import your game files.")
+                .setPositiveButton("Re-import") { _, _ -> importInto(ep) }
+                .setNeutralButton("Remove files") { _, _ -> confirmRemove(ep) }
+                .setNegativeButton("Cancel", null)
+                .show()
+            return
+        }
         val p = Settings.prefs(this)
         val want = ep.id + "|" + Settings.engineArgs(p).joinToString(" ")
         fun start(fresh: Boolean) {
@@ -316,42 +373,79 @@ class PickerActivity : Activity() {
         val uri = data?.data ?: return
         if (resultCode != RESULT_OK) return
         when (requestCode) {
-            REQ_IMPORT_TREE -> runImport(ep) { importTree(ep, uri) }
-            REQ_IMPORT_ZIP -> runImport(ep) { importZip(ep, uri) }
+            REQ_IMPORT_TREE -> runImport(ep) { importTree(ep, uri, it) }
+            REQ_IMPORT_ZIP -> runImport(ep) { importZip(ep, uri, it) }
         }
     }
 
-    private fun runImport(ep: Episode, body: () -> Int) {
+    /**
+     * Imports go to a staging dir first and are validated there (#102): only a
+     * complete copy matching a supported release replaces the episode's files
+     * (all of them, so earlier imports can't leave a mix). Anything else is
+     * refused with what was found, and the installed files stay as they were.
+     */
+    private fun runImport(ep: Episode, body: (File) -> Int) {
         val wait = Toast.makeText(this, "Importing…", Toast.LENGTH_SHORT).also { it.show() }
         exec.execute {
-            val result = try {
-                val n = body()
-                val dir = GameSetup.gameDir(this, ep)
+            val staging = GameSetup.stagingDir(this, ep)
+            val (title, result) = try {
+                val n = body(staging)
+                val check = pickCandidate(staging, ep)
                 when {
-                    n == 0 -> "Nothing to import there (looking for ${ep.dataFiles.joinToString()})."
-                    Episodes.hasGameFiles(dir, ep) -> {
+                    n == 0 || check == null ->
+                        "Nothing imported" to "Nothing to import there (looking for ${ep.dataFiles.joinToString()}). " +
+                            "Your installed files are unchanged."
+                    check.missing.isNotEmpty() ->
+                        "Keen ${ep.num} files not imported" to "That copy has ${check.foundText()}. Keen ${ep.num} " +
+                            "needs all three files from the same copy. Your installed files are unchanged."
+                    !check.ok ->
+                        "Keen ${ep.num} files not imported" to "These Keen ${ep.num} files don't match a supported " +
+                            "version, so they were not imported. Your installed files are unchanged.\n\n${check.problem()}"
+                    else -> {
+                        GameSetup.install(this, ep, File(staging, check.dir))
                         val k4note = when {
                             !ep.shareware -> ""
                             GameSetup.isFullVersion(this, ep) -> "\nRegistered version detected."
-                            else -> "\nThe data still matches the bundled shareware."
+                            else -> "\nThe data matches the bundled shareware."
                         }
-                        val k6note = if (ep.num == 6) "\nDetected Keen 6 " +
-                            (if (Episodes.tableSet(dir, ep) == "keen6e15") "v1.5" else "v1.4") + "." else ""
-                        "Imported $n file(s): Keen ${ep.num} is ready.$k4note$k6note"
+                        "Keen ${ep.num} imported" to "Detected Keen ${ep.num} ${check.release!!.label}: ready to play.$k4note"
                     }
-                    else -> "Imported $n file(s), but Keen ${ep.num} still needs " +
-                        ep.dataFiles.filter { Episodes.find(dir, it) == null }.joinToString() + "."
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "import failed", e)
-                "Import failed: ${e.message}"
+                "Import failed" to "Import failed: ${e.message}. Your installed files are unchanged."
+            } finally {
+                staging.deleteRecursively()
             }
+            Log.i(TAG, "import ${ep.id}: $title: $result")
             runOnUiThread {
                 wait.cancel()
-                AlertDialog.Builder(this).setMessage(result)
+                AlertDialog.Builder(this).setTitle(title).setMessage(result)
                     .setPositiveButton("OK") { _, _ -> rebuild() }.show()
             }
         }
+    }
+
+    /** One copy found in the import, in staging/<dir>, checked against the supported releases. */
+    private class Candidate(val dir: String, val check: Check) {
+        val ok get() = check.ok
+        val missing get() = check.missing
+        val release get() = check.release
+        fun foundText() = check.foundText()
+        fun problem() = check.problem()
+    }
+
+    /**
+     * The import may hold several copies (a zip with folders per version, as
+     * players collect them): each folder was staged separately. Take the first
+     * one that matches a supported release, else the most complete one (for
+     * the error message).
+     */
+    private fun pickCandidate(staging: File, ep: Episode): Candidate? {
+        val dirs = staging.listFiles()?.filter { it.isDirectory }?.sortedBy { it.name }.orEmpty()
+        val all = dirs.map { Candidate(it.name, Releases.check(it, ep)) }
+            .filter { it.missing.size < ep.dataFiles.size }
+        return all.firstOrNull { it.ok } ?: all.minByOrNull { it.missing.size }
     }
 
     /**
@@ -362,41 +456,37 @@ class PickerActivity : Activity() {
     private fun wanted(ep: Episode, name: String): Boolean =
         name.uppercase() in ep.dataFiles
 
-    /** Write to the canonical upper-case name, replacing any differently-cased copy. */
-    private fun destFor(dir: File, name: String): File {
-        Episodes.find(dir, name)?.takeIf { it.name != name.uppercase() }?.delete()
-        return File(dir, name.uppercase())
-    }
-
-    private fun importTree(ep: Episode, uri: Uri): Int {
+    /** The folder's top-level data files, staged as one copy. */
+    private fun importTree(ep: Episode, uri: Uri, staging: File): Int {
         val tree = DocumentFile.fromTreeUri(this, uri) ?: return 0
-        val dir = GameSetup.gameDir(this, ep)
-        dir.mkdirs()
+        val dir = File(staging, "0").also { it.mkdirs() }
         var n = 0
         for (doc in tree.listFiles()) {
             val name = doc.name ?: continue
             if (!doc.isFile || !wanted(ep, name)) continue
-            val dest = destFor(dir, name)
             contentResolver.openInputStream(doc.uri)?.use { input ->
-                dest.outputStream().use { input.copyTo(it) }
+                File(dir, name.uppercase()).outputStream().use { input.copyTo(it) }
             } ?: continue
             n++
         }
         return n
     }
 
-    private fun importZip(ep: Episode, uri: Uri): Int {
-        val dir = GameSetup.gameDir(this, ep)
-        dir.mkdirs()
+    /** Each folder inside the zip that holds data files is staged as its own copy. */
+    private fun importZip(ep: Episode, uri: Uri, staging: File): Int {
+        val folders = HashMap<String, File>()
         var n = 0
         contentResolver.openInputStream(uri)?.use { raw ->
             ZipInputStream(raw).use { zin ->
                 var e = zin.nextEntry
                 while (e != null) {
-                    // Flatten nested folders; File().name is the basename, which also defuses zip-slip.
-                    val name = File(e.name).name
+                    // File().name is the basename, which also defuses zip-slip.
+                    val path = File(e.name)
+                    val name = path.name
                     if (!e.isDirectory && wanted(ep, name)) {
-                        destFor(dir, name).outputStream().use { zin.copyTo(it) }
+                        val parent = (path.parent ?: "").lowercase()
+                        val dir = folders.getOrPut(parent) { File(staging, "%03d".format(folders.size)).also { it.mkdirs() } }
+                        File(dir, name.uppercase()).outputStream().use { zin.copyTo(it) }
                         n++
                     }
                     e = zin.nextEntry
