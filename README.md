@@ -93,7 +93,7 @@ x86_64 executable (engine, bundled SDL2, tables for Keen 4/5/6 incl. v1.5; needs
 and the usual desktop libs). `./keen456 4|5|6` launches an episode (or symlink it as `keen4`,
 `keen5`, `keen6`). Defaults: subpixel smoothing, camera smoothing, 16:9 widescreen, modern pogo,
 windowed. Options: `--wide[=16:9|16:10|fit]`, `--no-wide`, `--smooth=off|grid|pixel|subpixel`,
-`--filter=NAME`, `--vanilla`, `--xray`, `--fullscreen`, `--data DIR` (or `KEEN_DATA`), any raw
+`--filter=NAME`, `--vanilla`, `--xray`, `--fullscreen`, `--border` (the original cyan EGA border; off by default), `--data DIR` (or `KEEN_DATA`), any raw
 `/ENGINEARG`; preferences can go in `~/.config/keen456/args`. Saves live in
 `~/.local/share/keen456/keen<N>/`. The public build contains only the Keen 4 shareware; the private
 build with your own K4-K6 data is for the owner and is never published. Run `./keen456 --help`.

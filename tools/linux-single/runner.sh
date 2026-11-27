@@ -63,10 +63,11 @@ Options:
   --vanilla                 original behaviour: 4:3, no smoothing, no fixes
   --xray                    show hidden passages see-through (F10+H toggles in game)
   --fullscreen              start fullscreen (default: windowed; F11 toggles)
+  --border                  draw the original cyan EGA border (default: off)
   --data DIR                game files: DIR containing keen4/ keen5/ keen6/ or the .CKx files
                             (or env KEEN_DATA; or put them in ~/.local/share/keen456/data)
   -h, --help                this text
-Other /ENGINEARGS (e.g. /NOVSYNC /INTEGER /NOBORDER /FIX name) go straight to the engine.
+Other /ENGINEARGS (e.g. /NOVSYNC /INTEGER /FIX name) go straight to the engine.
 Preferences: put options in ${XDG_CONFIG_HOME:-~/.config}/keen456/args (one per line).
 Saves/config: ${XDG_DATA_HOME:-~/.local/share}/keen456/keen<N>/
 Examples:  keen456 5 --filter=crt --wide=16:10     keen456 6 --vanilla
@@ -109,7 +110,7 @@ fi
 
 ep=
 case $self_name in keen4|keen5|keen6) ep=${self_name#keen} ;; esac
-wide=16:9 smooth=subpixel camera=1 filter= pixels= modern=1 vanilla= xray= fs= explicit_wide= explicit_smooth= explicit_cam= explicit_ctl=
+wide=16:9 smooth=subpixel camera=1 filter= pixels= modern=1 vanilla= xray= fs= border= explicit_wide= explicit_smooth= explicit_cam= explicit_ctl=
 
 n=$#
 while [ "$n" -gt 0 ]; do
@@ -133,6 +134,8 @@ while [ "$n" -gt 0 ]; do
         --vanilla) vanilla=1 ;;
         --xray) xray=1 ;;
         --fullscreen) fs=1 ;;
+        --border) border=1 ;;
+        --no-border) border= ;;
         --data=*) data_opt=${a#--data=} ;;
         --data) [ $# -gt 0 ] || die "--data needs a directory"; data_opt=$1; shift; n=$((n - 1)) ;;
         *) set -- "$@" "$a" ;;   # raw engine arg: keep, in order
@@ -191,6 +194,7 @@ if [ -n "$wide" ]; then G="$G /ASPECT $wide /FIX widescreen"; else G="$G /ASPECT
 [ -n "$pixels" ] && G="$G /PIXELS $pixels"
 [ -n "$xray" ] && G="$G /XRAY"
 [ -n "$fs" ] && G="$G /FULLSCREEN"
+[ -n "$border" ] || G="$G /NOBORDER"
 set -f
 # shellcheck disable=SC2086
 set -- /EPISODE "$ep" /USERPATH "$save" $G "$@"
