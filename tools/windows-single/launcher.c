@@ -36,14 +36,14 @@ L"  --wide[=16:9|16:10|fit]   widescreen view (default 16:9)\n"
 L"  --no-wide                 original 4:3\n"
 L"  --smooth=off|grid|pixel|subpixel   (default subpixel)\n"
 L"  --no-camera               turn off camera smoothing\n"
-L"  --filter=NAME             off scanlines crt curved rgb soft amber green\n"
+L"  --filter=NAME             off scanlines crt curved rgb soft\n"
 L"  --pixels=NAME             crisp light low medium high\n"
 L"  --classic-controls        no modern pogo\n"
 L"  --vanilla                 original behaviour: 4:3, no smoothing, no fixes\n"
 L"  --xray                    hidden passages see-through (F10+H in game)\n"
-L"  --bright=0|1|2            filter brightness: 0 off, 1 auto (default), 2 bright\n"
+L"  --bright=0..4              filter brightness: 0 off, 1 low, 2 medium (default), 3 full, 4 bright\n"
 L"  --scanstyle=0|1|2         scanline style: 0 fine (default), 1 strong, 2 thick (a band per two rows)\n"
-L"  --zoom=0|1|2              start zoomed out\n"
+L"  --zoom=0|1|2              zoom: 0 normal, 1 out 1 (default), 2 out 2\n"
 L"  --camera=0|1|2|3          camera dead zone: 0 vanilla, 1 scaled with the zoom (default),\n"
 L"                            2 loose, 3 very loose (Keen gets near the edge before it scrolls)\n"
 L"  --fullscreen              start fullscreen (F11 toggles)\n"
@@ -193,7 +193,7 @@ int WINAPI wWinMain(HINSTANCE h, HINSTANCE p, LPWSTR cl, int sw)
 	wchar_t dz[4] = L"", wide[16] = L"16:9", smooth[16] = L"subpixel", filter[16] = L"", pixels[16] = L"", zoom[4] = L"", bright[4] = L"", scanstyle[4] = L"";
 	wchar_t data_opt[PL] = L"";
 	wchar_t *raw[MAXA]; int nraw = 0;
-	static const wchar_t *flt[] = {L"off", L"scanlines", L"crt", L"curved", L"rgb", L"soft", L"amber", L"green", 0};
+	static const wchar_t *flt[] = {L"off", L"scanlines", L"crt", L"curved", L"rgb", L"soft", 0};
 	static const wchar_t *pxl[] = {L"crisp", L"light", L"low", L"medium", L"high", 0};
 	static const wchar_t *smo[] = {L"off", L"grid", L"pixel", L"subpixel", 0};
 
@@ -217,7 +217,7 @@ int WINAPI wWinMain(HINSTANCE h, HINSTANCE p, LPWSTR cl, int sw)
 		else if (IS(L"--camera")) { camera = 1; ec = 1; }
 		else if (PRE(L"--filter="))
 		{
-			if (!in_list(flt, a + 9)) die(L"bad %ls (use off scanlines crt curved rgb soft amber green)", a);
+			if (!in_list(flt, a + 9)) die(L"bad %ls (use off scanlines crt curved rgb soft)", a);
 			wcscpy(filter, a + 9);
 		}
 		else if (PRE(L"--pixels="))
@@ -225,10 +225,10 @@ int WINAPI wWinMain(HINSTANCE h, HINSTANCE p, LPWSTR cl, int sw)
 			if (!in_list(pxl, a + 9)) die(L"bad %ls (use crisp light low medium high)", a);
 			wcscpy(pixels, a + 9);
 		}
-		else if (IS(L"--bright=0") || IS(L"--bright=1") || IS(L"--bright=2")) wcscpy(bright, a + 9);
-		else if (PRE(L"--bright=")) die(L"bad %ls (use 0, 1 or 2)", a);
+		else if (IS(L"--bright=0") || IS(L"--bright=1") || IS(L"--bright=2") || IS(L"--bright=3") || IS(L"--bright=4")) wcscpy(bright, a + 9);
+		else if (PRE(L"--bright=")) die(L"bad %ls (use 0 to 4)", a);
 		else if (IS(L"--scanstyle=0") || IS(L"--scanstyle=1") || IS(L"--scanstyle=2")) wcscpy(scanstyle, a + 12);
-		else if (PRE(L"--scanstyle=")) die(L"bad %ls (use 0, 1 or 2)", a);
+		else if (PRE(L"--scanstyle=")) die(L"bad %ls (use 0 to 4)", a);
 		else if (IS(L"--zoom=0") || IS(L"--zoom=1") || IS(L"--zoom=2")) wcscpy(zoom, a + 7);
 		else if (PRE(L"--zoom=")) die(L"bad %ls (use 0, 1 or 2)", a);
 		else if (IS(L"--camera=0") || IS(L"--camera=1") || IS(L"--camera=2") || IS(L"--camera=3")) wcscpy(dz, a + 9);

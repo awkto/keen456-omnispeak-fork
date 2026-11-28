@@ -73,7 +73,7 @@ Defaults: smooth subpixel scrolling, camera smoothing, 16:9 widescreen, enhanced
 modern pogo (Alt = pogo/jump, 180 ms hold), no EGA border, windowed.
 
 IN GAME
-  V        cycle the screen filter (off, scanlines, crt, curved, rgb, soft, amber, green)
+  V        cycle the screen filter (off, scanlines, crt, curved, rgb, soft)
   Z        cycle the zoom (vanilla, out 1, out 2: 1.25x / 1.5x more of the level)
   C        cycle the camera dead zone (0 vanilla, 1 default, 2 loose, 3 very loose)
   F11      fullscreen         F10+H  toggle x-ray (see hidden passages)
@@ -86,7 +86,7 @@ Put options (one or more per line, # for comments) in  %APPDATA%\keen456\args.tx
 keen456.exe from a command prompt:  keen456.exe 5 --filter=crt --wide=16:10
   --wide[=16:9|16:10|fit]  widescreen (default 16:9)      --no-wide   original 4:3
   --smooth=off|grid|pixel|subpixel  (default subpixel)    --no-camera camera smoothing off
-  --filter=off|scanlines|crt|curved|rgb|soft|amber|green  --pixels=crisp|light|low|medium|high
+  --filter=off|scanlines|crt|curved|rgb|soft  --pixels=crisp|light|low|medium|high
   --zoom=0|1|2             start zoomed out               --xray      hidden passages see-through
   --camera=0|1|2|3         camera dead zone: 0 vanilla, 1 default (scaled with zoom), 2 loose, 3 very loose
   --fullscreen             start fullscreen               --border    original cyan EGA border

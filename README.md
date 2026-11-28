@@ -47,15 +47,15 @@ fails the build if any Keen 5/6 game file ends up in it. Build it locally with
 - **Modern controls** (`/MODERNCONTROLS`, opt-in, menu entry): Alt is a press-and-release pogo
   toggle that also jumps (super-bounce). Never active in demos.
 - **Filter brightness** (#109): scanlines, masks and vignettes darken the picture, so a brightness setting
-  (off, auto = gain that offsets the filter, bright = auto + 15%) lifts it back; B cycles it in game,
-  `/FILTERBRIGHT 0|1|2` (default auto) sets it.
+  (off, low, medium, full = gain that fully offsets the filter, bright = full + 15%) lifts it back; B
+  cycles it in game, `/FILTERBRIGHT 0..4` (default 2, medium; config key `filterbright2`) sets it.
 - **Scanline style** (#111): for every filter with scanlines, 0 = fine (one soft line per game row),
   1 = strong (a darker, narrower gap per row; the Android default, as fine lines vanish at phone pixel
   density), 2 = thick (one dark band per two rows). `/SCANSTYLE 0|1|2`, config key `scanstyle`. Brightness
-  auto compensates for each style. Scanlines now follow the game rows when zoomed out.
+  compensates for each style. Scanlines now follow the game rows when zoomed out.
 - **Hotkeys and zoom** (#106): in game, V cycles the screen filter and Z cycles the zoom (normal,
   out 1 = 1.25x, out 2 = 1.5x more of the level both ways, e.g. 320x200 -> 400x250 -> 480x300),
-  each with a short on-screen label and saved to the config; `/ZOOM 0|1|2` sets the starting level.
+  each with a short on-screen label and saved to the config; `/ZOOM 0|1|2` sets the starting level (default 1, zoom out 1; a saved choice, even normal, is kept).
   Zoom needs the `zoom` fix (sim, on in `enhanced`): actors wake across the whole view. Details in
   [`docs/FILTERS.md`](docs/FILTERS.md).
 - **X-ray** (`/XRAY`, opt-in, F10+H): display only. Hidden passages (fore tiles drawn over Keen with
@@ -112,7 +112,7 @@ x86_64 executable (engine, bundled SDL2, tables for Keen 4/5/6 incl. v1.5; needs
 and the usual desktop libs). `./keen456 4|5|6` launches an episode (or symlink it as `keen4`,
 `keen5`, `keen6`). Defaults: subpixel smoothing, camera smoothing, 16:9 widescreen, modern pogo,
 windowed. Options: `--wide[=16:9|16:10|fit]`, `--no-wide`, `--smooth=off|grid|pixel|subpixel`,
-`--filter=NAME`, `--bright=0|1|2`, `--scanstyle=0|1|2`, `--zoom=0|1|2`, `--vanilla`, `--xray`, `--fullscreen`, `--border` (the original cyan EGA border; off by default), `--data DIR` (or `KEEN_DATA`), any raw
+`--filter=NAME`, `--bright=0..4`, `--scanstyle=0|1|2`, `--zoom=0|1|2`, `--vanilla`, `--xray`, `--fullscreen`, `--border` (the original cyan EGA border; off by default), `--data DIR` (or `KEEN_DATA`), any raw
 `/ENGINEARG`; preferences can go in `~/.config/keen456/args`. Saves live in
 `~/.local/share/keen456/keen<N>/`. The public build contains only the Keen 4 shareware; the private
 build with your own K4-K6 data is for the owner and is never published. Run `./keen456 --help`.

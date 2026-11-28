@@ -57,14 +57,14 @@ Options:
   --no-wide                 original 4:3
   --smooth=off|grid|pixel|subpixel   display-rate smoothing (default: subpixel)
   --no-camera               turn off camera smoothing (default: on)
-  --filter=NAME             off scanlines crt curved rgb soft amber green (default: off)
-  --bright=0|1|2            filter brightness: 0 off, 1 auto (default), 2 bright (B in game)
+  --filter=NAME             off scanlines crt curved rgb soft (default: off)
+  --bright=0..4              filter brightness: 0 off, 1 low, 2 medium (default), 3 full, 4 bright (B in game)
   --scanstyle=0|1|2         scanline style: 0 fine (default), 1 strong, 2 thick (a band per two rows)
   --pixels=NAME             crisp light low medium high (default: crisp)
   --classic-controls        no modern pogo (default: Alt = pogo/jump, 180 ms hold)
   --vanilla                 original behaviour: 4:3, no smoothing, no fixes
   --xray                    show hidden passages see-through (F10+H toggles in game)
-  --zoom=0|1|2              start zoomed out: 0 normal, 1 = 1.25x, 2 = 1.5x more of the level
+  --zoom=0|1|2              start zoomed out: 0 normal, 1 = 1.25x (default), 2 = 1.5x more of the level
   --camera=0|1|2|3          camera dead zone: 0 vanilla, 1 scaled with the zoom (default),
                             2 loose, 3 very loose (Keen gets near the edge before it scrolls)
   --fullscreen              start fullscreen (default: windowed; F11 toggles)
@@ -132,10 +132,10 @@ while [ "$n" -gt 0 ]; do
         --smooth=*) die "bad $a (use off, grid, pixel or subpixel)" ;;
         --no-camera) camera=; explicit_cam=1 ;;
         --camera) camera=1; explicit_cam=1 ;;
-        --filter=off|--filter=scanlines|--filter=crt|--filter=curved|--filter=rgb|--filter=soft|--filter=amber|--filter=green) filter=${a#--filter=} ;;
-        --filter=*) die "bad $a (use off scanlines crt curved rgb soft amber green)" ;;
-        --bright=0|--bright=1|--bright=2) bright=${a#--bright=} ;;
-        --bright=*) die "bad $a (use 0, 1 or 2)" ;;
+        --filter=off|--filter=scanlines|--filter=crt|--filter=curved|--filter=rgb|--filter=soft) filter=${a#--filter=} ;;
+        --filter=*) die "bad $a (use off scanlines crt curved rgb soft)" ;;
+        --bright=[0-4]) bright=${a#--bright=} ;;
+        --bright=*) die "bad $a (use 0 to 4)" ;;
         --scanstyle=0|--scanstyle=1|--scanstyle=2) scanstyle=${a#--scanstyle=} ;;
         --scanstyle=*) die "bad $a (use 0, 1 or 2)" ;;
         --pixels=crisp|--pixels=light|--pixels=low|--pixels=medium|--pixels=high) pixels=${a#--pixels=} ;;

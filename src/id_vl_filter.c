@@ -18,25 +18,22 @@
  * game rows (750 or 900 lines); everything else is 200 rows (200 or 800 lines). */
 static inline int GameRowsOf(int h) { return h == 750 ? 250 : h == 900 ? 300 : GAME_H; }
 
-const char *vlf_filterStrings[] = {"off", "scanlines", "crt", "curved", "rgb", "soft", "amber", "green", 0};
+const char *vlf_filterStrings[] = {"off", "scanlines", "crt", "curved", "rgb", "soft", 0};
 const char *vlf_pixelsStrings[] = {"crisp", "light", "low", "medium", "high", 0};
 
 typedef struct
 {
 	float scan, mask, vig, curve;
 	float blur;		   /* gaussian-ish sigma in game pixels */
-	float tint[3];	   /* monochrome tint, or all zero */
 } FilterDef;
 
 static const FilterDef defs[VLF_Filter_Count] = {
-	/* off */ {0, 0, 0, 0, 0, {0, 0, 0}},
-	/* scanlines */ {0.45f, 0, 0, 0, 0, {0, 0, 0}},
-	/* crt */ {0.45f, 0.18f, 0.45f, 0, 0, {0, 0, 0}},
-	/* curved */ {0.42f, 0.16f, 0.50f, 0.12f, 0, {0, 0, 0}},
-	/* rgb */ {0, 0.22f, 0, 0, 0, {0, 0, 0}},
-	/* soft */ {0.30f, 0, 0, 0, 0.30f, {0, 0, 0}},
-	/* amber */ {0.42f, 0, 0.25f, 0, 0, {1.0f * 1.05f, 0.69f * 1.05f, 0.0f}},
-	/* green */ {0.42f, 0, 0.25f, 0, 0, {0.30f * 1.04f, 1.0f * 1.04f, 0.32f * 1.04f}},
+	/* off */ {0, 0, 0, 0, 0},
+	/* scanlines */ {0.45f, 0, 0, 0, 0},
+	/* crt */ {0.45f, 0.18f, 0.45f, 0, 0},
+	/* curved */ {0.42f, 0.16f, 0.50f, 0.12f, 0},
+	/* rgb */ {0, 0.22f, 0, 0, 0},
+	/* soft */ {0.30f, 0, 0, 0, 0.30f},
 };
 /* "Pixels: smooth" amounts: the old shell's SMOOTH_SCALE (light .35, low .6, medium 1, high 1.6)
  * applied to a base of ~0.4 game pixels, which is what a bilinear 320x200 upscale looks like. */
@@ -149,11 +146,12 @@ static bool PixelFactor(const FilterDef *d, int x, int y, int w, int h, int *out
 	return true;
 }
 
-/* Filter brightness (#109): 0 off (the plain look), 1 auto (gain = 1 / mean of the filter's own
- * darkening, so the average picture brightness matches the unfiltered one), 2 bright (auto * 1.15). */
-static int curBright = 1;
+/* Filter brightness (#109): 0 off (the plain look), 1 low and 2 medium (1/3 and 2/3 of the full
+ * compensation), 3 full (gain G = 1 / mean of the filter's own darkening, so the average picture
+ * brightness matches the unfiltered one), 4 bright (G * 1.15). */
+static int curBright = VLF_Bright_Medium;
 static int lutBright = -1;
-void VLF_SetBrightness(int b) { curBright = (b >= 0 && b < VLF_Bright_Count) ? b : VLF_Bright_Auto; }
+void VLF_SetBrightness(int b) { curBright = (b >= 0 && b < VLF_Bright_Count) ? b : VLF_Bright_Medium; }
 int VLF_GetBrightness(void) { return curBright; }
 
 static float AutoGain(const FilterDef *d, int w, int h)
@@ -178,8 +176,17 @@ static void BuildLut(VLF_Filter f, int w, int h)
 {
 	const FilterDef *d = &defs[f];
 	float gain = 1.0f;
-	if (curBright >= VLF_Bright_Auto)
-		gain = AutoGain(d, w, h) * (curBright == VLF_Bright_Bright ? 1.15f : 1.0f);
+	if (curBright > VLF_Bright_Off)
+	{
+		float G = AutoGain(d, w, h);
+		switch (curBright)
+		{
+		case VLF_Bright_Low: gain = 1.0f + (G - 1.0f) / 3.0f; break;
+		case VLF_Bright_Medium: gain = 1.0f + 2.0f * (G - 1.0f) / 3.0f; break;
+		case VLF_Bright_Full: gain = G; break;
+		default: gain = G * 1.15f; break;
+		}
+	}
 	for (int y = 0; y < h; ++y)
 	{
 		for (int x = 0; x < w; ++x)
@@ -285,11 +292,6 @@ static inline uint32_t Sat8(uint32_t v) { return v < 255u ? v : 255u; }
 static inline uint32_t Shade(uint32_t c, uint32_t m)
 {
 	return 0xFF000000u | Sat8((((c >> 16) & 255) * (m & 1023)) >> 8) << 16 | Sat8((((c >> 8) & 255) * ((m >> 10) & 1023)) >> 8) << 8 | Sat8(((c & 255) * ((m >> 20) & 1023)) >> 8);
-}
-static inline uint32_t ShadeTint(uint32_t c, uint32_t m, uint32_t t0, uint32_t t1, uint32_t t2)
-{
-	uint32_t lum = (((c >> 16) & 255) * 77 + ((c >> 8) & 255) * 150 + (c & 255) * 29) >> 8;
-	return 0xFF000000u | Sat8(((lum * t0 >> 8) * (m & 1023)) >> 8) << 16 | Sat8(((lum * t1 >> 8) * ((m >> 10) & 1023)) >> 8) << 8 | Sat8(((lum * t2 >> 8) * ((m >> 20) & 1023)) >> 8);
 }
 
 /* Test hook: OMNI_DEBUG_FILTER_SHOT=<file.ppm> [OMNI_DEBUG_FILTER_SHOT_FRAME=n]: write the n-th
@@ -506,12 +508,8 @@ static const uint32_t *ApplyInner(const uint32_t *src, int w, int h, int *outW, 
 		BuildLut(curFilter, ow, oh);
 
 	uint32_t *dst = (cur == bufBlur) ? bufTmp : bufBlur;
-	bool tint = d->tint[0] > 0 || d->tint[1] > 0 || d->tint[2] > 0;
-	/* tint factors as x/256 (256 = 1.0) */
-	uint32_t t0 = (uint32_t)(d->tint[0] * 256.0f + 0.5f), t1 = (uint32_t)(d->tint[1] * 256.0f + 0.5f), t2 = (uint32_t)(d->tint[2] * 256.0f + 0.5f);
-	t0 = t0 > 256 ? 256 : t0; t1 = t1 > 256 ? 256 : t1; t2 = t2 > 256 ? 256 : t2;
 	bool curved = d->curve > 0;
-	if (shift && (curved || tint))
+	if (shift && curved)
 	{
 		/* rare combination: bring the blurred frame back to full size first */
 		uint32_t *up = (cur == bufBlur) ? bufTmp : bufBlur;
@@ -535,11 +533,6 @@ static const uint32_t *ApplyInner(const uint32_t *src, int w, int h, int *outW, 
 				uint32_t c = v < 0 ? 0 : cur[(size_t)(v >> 16) * cw + (v & 0xFFFF)];
 				drow[x] = Shade(c, mrow[x]);
 			}
-		}
-		else if (tint)
-		{
-			for (int x = 0; x < ow; ++x)
-				drow[x] = ShadeTint(crow[x], mrow[x], t0, t1, t2);
 		}
 		else if (shift)
 		{

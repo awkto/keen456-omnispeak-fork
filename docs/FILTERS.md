@@ -5,7 +5,7 @@ builds (native and WebAssembly), with smoothing on or off.
 
 | Option | Config key | Flag | Values |
 | --- | --- | --- | --- |
-| Filter | `filter` | `/FILTER x` | `off` (default), `scanlines`, `crt` (scanlines + RGB mask + vignette), `curved` (barrel warp + the CRT look), `rgb` (aperture mask), `soft` (blur + light scanlines), `amber`, `green` |
+| Filter | `filter` | `/FILTER x` | `off` (default), `scanlines`, `crt` (scanlines + RGB mask + vignette), `curved` (barrel warp + the CRT look), `rgb` (aperture mask), `soft` (blur + light scanlines) |
 | Pixels | `pixels` | `/PIXELS x` | `crisp` (default), `light`, `low`, `medium`, `high` (blur amount, like the old Smooth setting) |
 | Aspect | `aspectMode` | `/ASPECT x` | `auto` (default: the existing "correct aspect ratio" switch), `4:3`, `as-is` (square pixels, whole-number scale), `16:10`, `16:9`, `fit` (widescreen, see below) |
 
@@ -25,8 +25,8 @@ resolution. With smoothing off and a filter on, the 320x200 frame is expanded 4x
 `off` + `crisp` returns the input untouched: output is pixel-identical to before. Frame dumps
 (`OMNI_DEBUG_FRAMES`) are taken from the composed 8-bit buffer and never see the filters.
 
-Not ported exactly: the old `soft` filter's CSS `saturate(1.06)` is dropped; amber/green are
-fixed tints approximating the old CSS hue-rotate chains.
+Not ported exactly: the old `soft` filter's CSS `saturate(1.06)` is dropped. The amber and green
+monochrome filters were removed; a saved or passed `amber`/`green` now reads as `off`.
 
 ## Widescreen (#103)
 
@@ -76,7 +76,7 @@ How it works:
 ## Hotkeys and zoom (#106)
 
 In play (the play loop's `CK_CheckKeys`, never in menus, text entry or demos), a plain **V**
-cycles the screen filter (off, scanlines, crt, curved, rgb, soft, amber, green) and a plain **Z**
+cycles the screen filter (off, scanlines, crt, curved, rgb, soft) and a plain **Z**
 cycles the zoom (normal, out 1, out 2); both are saved to the config (`filter`, `zoom`). They do
 nothing while F10 is held (F10+V / F10+Z are debug keys) or when the key is bound to a game
 control. Each shows a label ("FILTER: CRT", "ZOOM OUT 2") for 1.5 s, drawn over the final frame
@@ -145,19 +145,21 @@ letterboxes inside it. The launcher accepts `?filter=crt&pixels=low&aspect=16:9`
 ## Filter brightness (#109)
 
 Scanlines, the RGB mask and the vignette darken the picture (scanlines on their own average about
-0.775). `/FILTERBRIGHT 0|1|2` (config key `filterbright`, B in game) lifts it back: 0 = off (the
-plain look), 1 = auto (the per-filter LUT is multiplied by 1 / mean(scan * mask * vignette), so the
-average brightness matches the unfiltered picture), 2 = bright (auto x 1.15). The LUT factors can
+0.775). `/FILTERBRIGHT 0..4` (config key `filterbright2`, B in game; the old `filterbright` key, whose
+values meant something else, is ignored) lifts it back: 0 = off (the plain look), 3 = full (the
+per-filter LUT is multiplied by G = 1 / mean(scan * mask * vignette), so the average brightness
+matches the unfiltered picture), 1 = low (gain 1 + (G-1)/3), 2 = medium (1 + 2(G-1)/3, the default),
+4 = bright (G x 1.15). The LUT factors can
 exceed 1.0; Shade() saturates each channel at 255. Display only: never in frame dumps or the sim.
 
 ## Scanline style (#111)
 
 `/SCANSTYLE 0|1|2` (config key `scanstyle`, Android setting "Scanline style") applies to every
-filter with scanlines (scanlines, crt, curved, soft, amber, green). 0 = fine: the original soft
+filter with scanlines (scanlines, crt, curved, soft). 0 = fine: the original soft
 `1 - scan + scan * sin^2(pi * rows * v)`, one line per game row. 1 = strong: a dark gap centred on
 the row boundary, fully dark within 12% of the period from it, smoothstep back to full
 brightness at 22%, depth 1.55 x the filter's scan factor (0.70 for 0.45): readable at 425 ppi phone
 density where a fine line is ~0.2 mm. 2 = thick: the same profile with a period of two game rows.
 The row count comes from the frame (200, or 250/300 zoomed out, #106), so lines always follow game
-rows; the RGB mask phase and blur width use the same count. Auto brightness takes the mean of the
+rows; the RGB mask phase and blur width use the same count. Full brightness takes the mean of the
 real LUT, so it compensates for each style. Android defaults to strong, everything else to fine.

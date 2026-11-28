@@ -16,8 +16,6 @@ typedef enum
 	VLF_Filter_Curved,
 	VLF_Filter_RGB,
 	VLF_Filter_Soft,
-	VLF_Filter_Amber,
-	VLF_Filter_Green,
 	VLF_Filter_Count
 } VLF_Filter;
 
@@ -32,7 +30,7 @@ typedef enum
 } VLF_Pixels;
 
 /* filter brightness (#109): compensates what the filter's scanlines/mask/vignette darken */
-typedef enum { VLF_Bright_Off, VLF_Bright_Auto, VLF_Bright_Bright, VLF_Bright_Count } VLF_Bright;
+typedef enum { VLF_Bright_Off, VLF_Bright_Low, VLF_Bright_Medium, VLF_Bright_Full, VLF_Bright_Bright, VLF_Bright_Count } VLF_Bright;
 /* #111: scanline style for every filter with scanlines: one soft line per game row (fine), a
  * darker narrower gap per game row (strong), or one dark band per two game rows (thick) */
 typedef enum { VLF_ScanStyle_Fine, VLF_ScanStyle_Strong, VLF_ScanStyle_Thick, VLF_ScanStyle_Count } VLF_ScanStyle;

@@ -615,13 +615,13 @@ int main(int argc, char *argv[])
 	// Screen filters, aspect ratio and pixel softness (keen456-omnispeak-fork #101)
 	VLF_SetFilter((VLF_Filter)CFG_GetConfigEnum("filter", vlf_filterStrings, VLF_Filter_Off));
 	VLF_SetPixels((VLF_Pixels)CFG_GetConfigEnum("pixels", vlf_pixelsStrings, VLF_Pixels_Crisp));
-	VLF_SetBrightness(CFG_GetConfigInt("filterbright", VLF_Bright_Auto));
+	VLF_SetBrightness(CFG_GetConfigInt("filterbright2", VLF_Bright_Medium));
 	VLF_SetScanStyle(CFG_GetConfigInt("scanstyle", VLF_ScanStyle_Fine));
 	vl_aspectMode = CFG_GetConfigEnum("aspectMode", vl_aspectStrings, VL_Aspect_Auto);
 	// Zoom out level (keen456-omnispeak-fork #106); shown only with the 'zoom' fix
-	rf_zoomLevel = CFG_GetConfigInt("zoom", 0);
+	rf_zoomLevel = CFG_GetConfigInt("zoom", 1); // default: zoom out 1; a saved choice (even 0) is kept
 	if (rf_zoomLevel < 0 || rf_zoomLevel >= RF_ZOOM_LEVELS)
-		rf_zoomLevel = 0;
+		rf_zoomLevel = 1;
 #endif
 	// Camera dead zone level (keen456-omnispeak-fork #108); used only with the 'camera-deadzone' fix
 	ck_cameraLevel = CFG_GetConfigInt("camera", 1);
@@ -773,9 +773,9 @@ int main(int argc, char *argv[])
 		}
 		else if (!CK_Cross_strcasecmp(argv[i], "/FILTERBRIGHT"))
 		{
-			// /FILTERBRIGHT 0|1|2: screen filter brightness (off, auto, bright); B cycles it (#109)
+			// /FILTERBRIGHT 0..4: screen filter brightness (off, low, medium, full, bright); B cycles it (#109)
 			if (i + 1 >= argc || argv[i + 1][0] < '0' || argv[i + 1][0] >= '0' + VLF_Bright_Count || argv[i + 1][1])
-				Quit("/FILTERBRIGHT needs 0, 1 or 2");
+				Quit("/FILTERBRIGHT needs 0 to 4");
 			VLF_SetBrightness(argv[++i][0] - '0');
 		}
 		else if (!CK_Cross_strcasecmp(argv[i], "/SCANSTYLE"))
@@ -794,7 +794,7 @@ int main(int argc, char *argv[])
 		}
 		else if (!CK_Cross_strcasecmp(argv[i], "/FILTER") || !CK_Cross_strcasecmp(argv[i], "/PIXELS") || !CK_Cross_strcasecmp(argv[i], "/ASPECT"))
 		{
-			// /FILTER off|scanlines|crt|curved|rgb|soft|amber|green, /PIXELS crisp|light|low|medium|high,
+			// /FILTER off|scanlines|crt|curved|rgb|soft (amber and green were removed: they read as off), /PIXELS crisp|light|low|medium|high,
 			// /ASPECT auto|4:3|as-is|16:10|16:9|fit
 			char kind = (char)(argv[i][1] | 0x20);
 			const char **names = kind == 'f' ? vlf_filterStrings : kind == 'p' ? vlf_pixelsStrings : vl_aspectStrings;
@@ -805,6 +805,8 @@ int main(int argc, char *argv[])
 			for (int m = 0; names[m]; ++m)
 				if (!CK_Cross_strcasecmp(argv[i], names[m]))
 					v = m;
+			if (v < 0 && kind == 'f' && (!CK_Cross_strcasecmp(argv[i], "amber") || !CK_Cross_strcasecmp(argv[i], "green")))
+				v = 0; // removed monochrome filters: fall back to off
 			if (v < 0)
 				QuitF("Unknown value '%s' for %s", argv[i], argv[i - 1]);
 			if (kind == 'f') VLF_SetFilter((VLF_Filter)v);

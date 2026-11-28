@@ -1500,7 +1500,7 @@ void CK_US_UpdateOptionsMenus(void)
 		static const char *smoothCaps[] = {"SMOOTHING (OFF)", "SMOOTHING (GRID)", "SMOOTHING (PIXEL)", "SMOOTHING (SUBPIXEL)"};
 		ck_us_optionsMenuItems[9].caption = smoothCaps[RFI_Enabled() ? RFI_GetMode() : RFI_Mode_Off];
 		ck_us_optionsMenuItems[10].caption = CK_Fix_Enabled(CK_FIX_CameraSmoothing) ? "CAMERA SMOOTHING (ON)" : "CAMERA SMOOTHING (OFF)";
-		static const char *filterCaps[] = {"FILTER (OFF)", "FILTER (SCANLINES)", "FILTER (CRT)", "FILTER (CURVED)", "FILTER (RGB)", "FILTER (SOFT)", "FILTER (AMBER)", "FILTER (GREEN)"};
+		static const char *filterCaps[] = {"FILTER (OFF)", "FILTER (SCANLINES)", "FILTER (CRT)", "FILTER (CURVED)", "FILTER (RGB)", "FILTER (SOFT)"};
 		static const char *aspectCaps[] = {"ASPECT (AUTO)", "ASPECT (4:3)", "ASPECT (AS-IS)", "ASPECT (16:10)", "ASPECT (16:9)", "ASPECT (FIT)"};
 		static const char *pixelsCaps[] = {"PIXELS (CRISP)", "PIXELS (LIGHT)", "PIXELS (LOW)", "PIXELS (MEDIUM)", "PIXELS (HIGH)"};
 		ck_us_optionsMenuItems[11].caption = filterCaps[VLF_GetFilter()];

@@ -33,10 +33,10 @@ object Settings {
     val PROFILE_KEYS = arrayOf("enhanced", "vanilla")
     val PROFILE_NAMES = arrayOf("Enhanced (default)", "Vanilla (bug-for-bug DOS)")
     // Screen filters and pixel softness: the engine's /FILTER and /PIXELS (src/id_vl_filter.c).
-    val FILTER_KEYS = arrayOf("off", "scanlines", "crt", "curved", "rgb", "soft", "amber", "green")
+    val FILTER_KEYS = arrayOf("off", "scanlines", "crt", "curved", "rgb", "soft")
     val FILTER_NAMES = arrayOf(
         "Off (default)", "Scanlines", "CRT (scanlines + mask + vignette)", "Curved CRT",
-        "RGB grille", "Soft (blurry pixels)", "Amber monochrome", "Green monochrome")
+        "RGB grille", "Soft (blurry pixels)")
     val PIXELS_KEYS = arrayOf("crisp", "light", "low", "medium", "high")
     val PIXELS_NAMES = arrayOf("Crisp (sharp pixels, default)", "Smooth: light", "Smooth: low",
         "Smooth: medium", "Smooth: high")
@@ -55,10 +55,13 @@ object Settings {
     fun pogoHold(p: SharedPreferences) = p.getString("pogohold", "180") ?: "180"
     fun modernKeyboard(p: SharedPreferences) = p.getBoolean("modernKeyboard", true)
     fun fullscreen(p: SharedPreferences) = p.getBoolean("fullscreen", true)
-    fun filter(p: SharedPreferences) = p.getString("filter", "off") ?: "off"
+    fun filter(p: SharedPreferences): String { // removed filters (amber, green) read as off
+        val v = p.getString("filter", "off") ?: "off"
+        return if (v in FILTER_KEYS) v else "off"
+    }
     fun pixels(p: SharedPreferences) = p.getString("pixels", "crisp") ?: "crisp"
-    /** Filter brightness: 0 off, 1 auto (default), 2 bright; the engine's /FILTERBRIGHT (#109). */
-    fun filterBright(p: SharedPreferences) = p.getInt("filterBright", 1).coerceIn(0, 2)
+    /** Filter brightness: 0 off, 1 low, 2 medium (default), 3 full, 4 bright; the engine's /FILTERBRIGHT (#109). */
+    fun filterBright(p: SharedPreferences) = p.getInt("filterBright2", 2).coerceIn(0, 4)
     /** Scanline style (#111): 0 fine, 1 strong (default here: visible at phone pixel density), 2 thick. */
     fun scanStyle(p: SharedPreferences) = p.getInt("scanStyle", 1).coerceIn(0, 2)
     fun xrayAtStart(p: SharedPreferences) = p.getBoolean("xray", false)
@@ -125,11 +128,11 @@ object Settings {
     }
 
     /** Zoom out (#106): /ZOOM 0|1|2, enhanced profile only (the 'zoom' fix). */
-    fun zoom(p: SharedPreferences) = p.getInt("zoom", 0).coerceIn(0, 2)
+    fun zoom(p: SharedPreferences) = p.getInt("zoom", 1).coerceIn(0, 2)
     val ZOOM_NAMES = arrayOf("Normal", "Zoom out 1 (1.25x)", "Zoom out 2 (1.5x)")
     val CAMERA_NAMES = arrayOf("Vanilla", "Scaled", "Loose", "Very loose")
     private val ALL_KEYS = arrayOf("smoothing", "profile", "cameraSmoothing", "cameraDeadzone", "pogohold",
-        "modernKeyboard", "fullscreen", "filter", "pixels", "xray", "quickSaveConfirm", "egaBorder", "zoom", "filterBright", "scanStyle")
+        "modernKeyboard", "fullscreen", "filter", "pixels", "xray", "quickSaveConfirm", "egaBorder", "zoom", "filterBright2", "scanStyle")
 
     /**
      * The settings dialog, shared by the picker and the game. onChanged runs
@@ -230,11 +233,11 @@ object Settings {
         section("Picture")
         drop("Zoom", "Show more of the level (Z in game). Enhanced only.", ZOOM_NAMES, zoom(p), true) {
             p.edit().putInt("zoom", it).apply() }
-        drop("Screen filter", "CRT-style looks and tints", arrayOf("Off", "Scanlines", "CRT", "Curved CRT",
-            "RGB grille", "Soft", "Amber", "Green"), idx(FILTER_KEYS, filter(p))) {
+        drop("Screen filter", "CRT-style looks", arrayOf("Off", "Scanlines", "CRT", "Curved CRT",
+            "RGB grille", "Soft"), idx(FILTER_KEYS, filter(p))) {
             p.edit().putString("filter", FILTER_KEYS[it]).apply() }
-        drop("Filter brightness", "Make up for the darkening of scanlines and masks", arrayOf("Off", "Auto", "Bright"),
-            filterBright(p)) { p.edit().putInt("filterBright", it).apply() }
+        drop("Filter brightness", "Make up for the darkening of scanlines and masks: Low and Medium part way, Full evens it out, Bright goes beyond", arrayOf("Off", "Low", "Medium", "Full", "Bright"),
+            filterBright(p)) { p.edit().putInt("filterBright2", it).apply() }
         drop("Scanline style", "Fine, Strong (one dark gap per row) or Thick (per two rows); for every filter with scanlines",
             arrayOf("Fine", "Strong", "Thick"), scanStyle(p)) { p.edit().putInt("scanStyle", it).apply() }
         drop("Pixels", "Sharp or smoothed pixel edges", arrayOf("Crisp", "Smooth: light", "Smooth: low",
