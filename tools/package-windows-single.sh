@@ -16,7 +16,7 @@ set -euo pipefail
 FLAVORS=${1:-both}
 HERE=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
 cd "$HERE"
-HASH=$( (git rev-parse --short HEAD 2>/dev/null) || echo local)
+HASH=${BUILD_ID:-$( (git rev-parse --short HEAD 2>/dev/null) || echo local)}
 KD=${KEEN_DATA:-$HOME/keen-data-decomp}
 PRIVATE_OUT=${PRIVATE_OUT:-$HOME/keen-share/windows}
 NICE="nice -n 19 ionice -c3"

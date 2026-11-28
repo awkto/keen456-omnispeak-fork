@@ -2,6 +2,15 @@
 
 **Play it in your browser: <https://awkto.github.io/keen456-omnispeak-fork/>** (Keen 4 shareware is built in; for Keen 5 and 6 you load your own game files, which never leave your browser.)
 
+**Downloads** (latest release, [all releases](https://github.com/awkto/keen456-omnispeak-fork/releases)):
+[Android APK](https://github.com/awkto/keen456-omnispeak-fork/releases/latest/download/keen456-omni.apk) ·
+[Linux x86_64](https://github.com/awkto/keen456-omnispeak-fork/releases/latest/download/keen456-linux-x86_64.tar.gz) ·
+[Windows x64](https://github.com/awkto/keen456-omnispeak-fork/releases/latest/download/keen456-windows-x86_64.zip) ·
+[Web build](https://github.com/awkto/keen456-omnispeak-fork/releases/latest/download/keen456-web.tar.gz) ·
+[SHA256SUMS](https://github.com/awkto/keen456-omnispeak-fork/releases/latest/download/SHA256SUMS).
+Every download includes Keen 4 (shareware); for Keen 5 and 6 point it at your own game files
+(`--data DIR` on Linux/Windows, import on Android). How releases are cut: [RELEASING.md](RELEASING.md).
+
 A fork of [Omnispeak](https://github.com/sulix/omnispeak) (the open-source reimplementation of
 Commander Keen 4, 5 and 6) that keeps the original game's behaviour bug-for-bug and adds smooth
 high-refresh presentation, optional fixes, a few quality-of-life features and a browser (WASM) build.
@@ -9,8 +18,8 @@ Default behaviour is the `vanilla` profile and stays tic-for-tic identical to th
 change is presentation-only or sits behind a named toggle.
 
 You need your own copies of the game files (Keen 4 v1.4 shareware is free; Keen 5 and 6 are
-commercial). No game data is in this repository. The public web build (GitHub Pages, built by
-`.github/workflows/pages.yml`) bundles only the Keen 4 shareware; `tools/check-pages-artifact.sh`
+commercial). No game data is in this repository. The public web build (GitHub Pages, deployed by
+`.github/workflows/release.yml` on every release tag) bundles only the Keen 4 shareware; `tools/check-pages-artifact.sh`
 fails the build if any Keen 5/6 game file ends up in it. Build it locally with
 `TABLES_ONLY="5 6" tools/build-wasm.sh`.
 
@@ -102,8 +111,9 @@ below). CMake builds also work (`CMakeLists.txt`). Other targets:
 
 Download the latest build: https://github.com/awkto/keen456-omnispeak-fork/releases/latest/download/keen456-omni.apk
 (Keen 4 shareware included; the installed version is shown at the bottom of the picker and in Settings).
-Releases are cut by pushing a tag named `android-YYYY.MM.DD[x]`, which runs
-`.github/workflows/android-release.yml` (build, sign with the stable key, publish `keen456-omni.apk`). See `android/README.md`.
+It is built, signed with the stable key and attached to every `vX.Y.Z` release by
+`.github/workflows/release.yml` (see [RELEASING.md](RELEASING.md) and `android/README.md`); the old
+`android-YYYY.MM.DD` tags are retired.
 
 ### Single-file Linux launcher
 

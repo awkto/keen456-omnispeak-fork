@@ -1,0 +1,149 @@
+# Push a semver tag (git tag -a v1.2.3 -m "..." && git push origin v1.2.3) to build every platform
+# and publish ONE GitHub Release with all of them (see RELEASING.md):
+#   keen456-omni.apk               Android, signed with the stable key (signer a6629253...)
+#   keen456-linux-x86_64.tar.gz    Linux single-file launcher
+#   keen456-windows-x86_64.zip     Windows (omnispeak.exe + keen456.exe launcher + .bat files)
+#   keen456-web.tar.gz             the WebAssembly site (same files GitHub Pages serves)
+#   SHA256SUMS
+# Asset names carry no version, so releases/latest/download/<name> always serves the newest release.
+# A tag with a pre-release suffix (v1.2.3-rc1) makes a pre-release: never "latest", no Pages deploy.
+# A plain vX.Y.Z tag becomes "latest" and deploys the web build to GitHub Pages.
+# Only the Keen 4 shareware is bundled anywhere; Keen 5/6 are commercial and supplied by the player.
+name: release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - id: v
+        run: |
+          set -euo pipefail
+          tag=$GITHUB_REF_NAME
+          [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "FAIL: $tag is not vMAJOR.MINOR.PATCH[-pre]"; exit 1; }
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          if [[ $tag == *-* ]]; then echo "prerelease=true"; else echo "prerelease=false"; fi >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
+
+  build:
+    needs: meta
+    uses: ./.github/workflows/build.yml
+    with:
+      version: ${{ needs.meta.outputs.version }}
+      sign: true
+      pages: ${{ needs.meta.outputs.prerelease == 'false' }}
+    secrets:
+      ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+
+  release:
+    needs: [meta, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0   # tags + history for the release notes
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: pkg-*
+          path: assets
+          merge-multiple: true
+
+      - name: Check assets (complete, no Keen 5/6 data) and write SHA256SUMS
+        run: |
+          set -euo pipefail
+          cd assets
+          ls -la
+          for f in keen456-omni.apk keen456-linux-x86_64.tar.gz keen456-windows-x86_64.zip keen456-web.tar.gz; do
+            [ -s "$f" ] || { echo "FAIL: $f missing"; exit 1; }
+          done
+          ../tools/check-public-artifact.sh keen456-omni.apk keen456-linux-x86_64.tar.gz keen456-windows-x86_64.zip keen456-web.tar.gz
+          sha256sum keen456-omni.apk keen456-linux-x86_64.tar.gz keen456-windows-x86_64.zip keen456-web.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Release notes (commits since the previous release tag)
+        env:
+          PRE: ${{ needs.meta.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          tag=$GITHUB_REF_NAME
+          # previous release: the highest semver tag below this one (a stable release skips pre-releases)
+          tags=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' | grep -vxF "$tag" || true)
+          [ "$PRE" = true ] || tags=$(grep -v -- - <<<"$tags" || true)
+          prev=$( { [ -n "$tags" ] && printf '%s\n' "$tags"; echo "$tag"; } | sort -V | grep -B1 -xF "$tag" | grep -vxF "$tag" || true)
+          # first semver release: start from the last tag of the old android-YYYY.MM.DD scheme
+          [ -n "$prev" ] || prev=$(git describe --tags --abbrev=0 --match 'android-*' "$tag^" 2>/dev/null || true)
+          if [ -n "$prev" ]; then range="$prev..$tag"; since="since $prev"; else range="-50 $tag"; since="(last 50 commits)"; fi
+          {
+            echo "Commander Keen 4/5/6 on the keen456 Omnispeak fork, version ${tag#v} (commit $(git rev-parse --short "$tag^{commit}"))."
+            echo
+            echo "| Platform | Download |"
+            echo "|---|---|"
+            echo "| Android (arm64 / x86_64) | \`keen456-omni.apk\` (installs over earlier keen456-omni APKs: same signing key) |"
+            echo "| Linux x86_64 | \`keen456-linux-x86_64.tar.gz\`: unpack, run \`./keen456 4\` |"
+            echo "| Windows 10/11 x64 | \`keen456-windows-x86_64.zip\`: unzip, double-click \`Keen 4.bat\` |"
+            echo "| Web | play at https://awkto.github.io/keen456-omnispeak-fork/ or self-host \`keen456-web.tar.gz\` |"
+            echo
+            echo "Keen 4 (shareware, the full episode) is built in everywhere. Keen 5 and 6 are commercial and not included:"
+            echo "point the game at your own copy (Linux/Windows \`--data DIR\`, Android: import a folder or .zip, web: load your files)."
+            echo "Verify downloads with \`sha256sum -c SHA256SUMS\`. Source: this repository at the tag (GPL-2.0-or-later)."
+            echo
+            echo "## Changes $since"
+            echo
+            git log --no-merges --pretty='- %s (%h)' $range
+          } > notes.md
+          cat notes.md
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRE: ${{ needs.meta.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          tag=$GITHUB_REF_NAME
+          if [ "$PRE" = true ]; then flags=(--prerelease --latest=false); else flags=(--latest); fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" --notes-file notes.md "${flags[@]}"
+          else
+            gh release create "$tag" --verify-tag --title "keen456 ${tag#v}" --notes-file notes.md "${flags[@]}"
+          fi
+          gh release upload "$tag" --clobber assets/keen456-omni.apk assets/keen456-linux-x86_64.tar.gz \
+            assets/keen456-windows-x86_64.zip assets/keen456-web.tar.gz assets/SHA256SUMS
+          got=$(gh release view "$tag" --json assets -q '.assets[].name' | sort | tr '\n' ' ')
+          echo "assets: $got"
+          [ "$got" = "SHA256SUMS keen456-linux-x86_64.tar.gz keen456-omni.apk keen456-web.tar.gz keen456-windows-x86_64.zip " ] \
+            || { echo "FAIL: unexpected asset list"; exit 1; }
+
+  pages:
+    needs: [meta, release]
+    if: needs.meta.outputs.prerelease == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5

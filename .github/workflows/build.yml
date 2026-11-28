@@ -1,0 +1,249 @@
+# Reusable build of every public platform package (called by ci.yml and release.yml).
+# Public outputs carry ONLY the Keen 4 shareware (freely redistributable); Keen 5/6 are commercial and
+# are supplied by the player. Every artifact is checked by tools/check-public-artifact.sh.
+name: build
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Release version without the leading v (e.g. 1.2.3); empty = CI build'
+        type: string
+        default: ''
+      sign:
+        description: 'Sign the APK with the stable release key (secret ANDROID_KEYSTORE_B64)'
+        type: boolean
+        default: false
+      pages:
+        description: 'Also upload the web build as the GitHub Pages artifact'
+        type: boolean
+        default: false
+    secrets:
+      ANDROID_KEYSTORE_B64:
+        required: false
+
+permissions:
+  contents: read
+
+env:
+  # Signing cert of the published APKs: updates only install over it with this exact key.
+  EXPECTED_CERT_SHA256: a6629253002ec217f0db9a9705d42e7bb05d70b20d206e9ee96cd2c35da775ce
+  EMSDK_VERSION: "6.0.13"   # what tools/build-wasm.sh and the keen456x dist are built with
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0   # versionCode counts commits
+
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0 ndk;27.2.12479018 cmake;3.22.1'
+
+      - name: Cache SDL2 source (pinned in tools/build-android.sh)
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: android/deps
+          key: android-deps-${{ hashFiles('tools/build-android.sh') }}
+
+      - name: Version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          SHORT=$(git rev-parse --short HEAD)
+          echo "KEEN_VERSION_CODE=$(git rev-list --count HEAD)" >> "$GITHUB_ENV"
+          echo "KEEN_VERSION_NAME=${VERSION:-ci-$SHORT}" >> "$GITHUB_ENV"
+          echo "BUILD_HASH=$SHORT" >> "$GITHUB_ENV"
+
+      - name: Build (signed with the stable key when sign=true)
+        env:
+          KS_B64: ${{ inputs.sign && secrets.ANDROID_KEYSTORE_B64 || '' }}
+          SIGN: ${{ inputs.sign }}
+        run: |
+          set -euo pipefail
+          if [ "$SIGN" = true ]; then
+            [ -n "$KS_B64" ] || { echo "ANDROID_KEYSTORE_B64 secret missing"; exit 1; }
+            umask 077
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/debug.keystore"
+            export KEEN_DEBUG_KEYSTORE="$RUNNER_TEMP/debug.keystore"
+          else
+            echo "unsigned CI build: runner's throwaway debug key"
+          fi
+          tools/build-android.sh
+          cp dist/keen456-omni-*-debug.apk keen456-omni.apk
+          rm -f "$RUNNER_TEMP/debug.keystore" "$HOME/.android/debug.keystore"
+
+      - name: Verify signature, version and contents
+        env:
+          SIGN: ${{ inputs.sign }}
+        run: |
+          set -euo pipefail
+          BT=$ANDROID_HOME/build-tools/34.0.0
+          got=$("$BT/apksigner" verify --print-certs keen456-omni.apk | grep -m1 'SHA-256 digest' | sed 's/.*: //')
+          echo "cert sha256: $got"
+          if [ "$SIGN" = true ]; then
+            case $got in a6629253*) ;; *) echo "FAIL: signer does not start a6629253"; exit 1 ;; esac
+            [ "$got" = "$EXPECTED_CERT_SHA256" ] || { echo "FAIL: wrong signing key"; exit 1; }
+          fi
+          badging=$("$BT/aapt" dump badging keen456-omni.apk)
+          echo "$badging" | grep -m1 package:
+          echo "$badging" | grep -q "versionCode='$KEEN_VERSION_CODE'" || { echo "FAIL: versionCode"; exit 1; }
+          echo "$badging" | grep -q "versionName='$KEEN_VERSION_NAME'" || { echo "FAIL: versionName"; exit 1; }
+          bad=$(unzip -Z1 keen456-omni.apk | grep '^assets/game/' | grep -v '^assets/game/keen4/' || true)
+          [ -z "$bad" ] || { echo "FAIL: non-keen4 game assets"; exit 1; }
+          unzip -Z1 keen456-omni.apk | grep '^assets/game/'
+          tools/check-public-artifact.sh keen456-omni.apk
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pkg-android
+          path: keen456-omni.apk
+          if-no-files-found: error
+
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Package (docker ubuntu:22.04 engine build, Keen 4 shareware bundled)
+        env:
+          BUILD_ID: ${{ inputs.version }}
+          DOCKER_CPUS: '4'
+          DOCKER_MEM: 8g
+          JOBS: '4'
+        run: |
+          set -euo pipefail
+          tools/package-linux-single.sh public
+          d=keen456-linux-x86_64
+          mkdir -p "$d"
+          cp dist/keen456-*-linux-x86_64 "$d/keen456"
+          cp LICENSE "$d/LICENSE"
+          cat > "$d/README.txt" <<'R'
+          keen456 - Commander Keen 4/5/6 for Linux x86_64 (smooth scrolling, widescreen), built on the
+          keen456 Omnispeak fork: https://github.com/awkto/keen456-omnispeak-fork (GPL-2.0-or-later).
+
+          Run:  ./keen456 4          (Keen 4 shareware is built in)
+                ./keen456 5 --data DIR   /   ./keen456 6 --data DIR
+          Keen 5 and 6 are commercial and NOT included: point --data (or KEEN_DATA) at a folder with
+          your own v1.4/v1.5 game files, or put them in ~/.local/share/keen456/data/keen5 (keen6).
+          ./keen456 --help lists every option. The complete engine source is inside the launcher
+          (unpacked to ~/.cache/keen456/p-*/omnispeak-src.tar.gz on first run).
+          R
+          tar czf keen456-linux-x86_64.tar.gz "$d"
+          tar tzvf keen456-linux-x86_64.tar.gz
+
+      - name: Smoke test (--help, missing-data message, Keen 4 headless start)
+        run: |
+          set -euo pipefail
+          t=$(mktemp -d); tar xzf keen456-linux-x86_64.tar.gz -C "$t"
+          k=$t/keen456-linux-x86_64/keen456
+          "$k" --help | tee "$t/help.txt"
+          grep -q 'Episodes available: 4$' "$t/help.txt" || { echo "FAIL: --help should list only episode 4"; exit 1; }
+          rc=0; HOME=$t/h "$k" 5 > "$t/k5.txt" 2>&1 || rc=$?
+          [ "$rc" = 1 ] && grep -q 'no game files for Keen 5 found' "$t/k5.txt" \
+            || { echo "FAIL: missing Keen 5 data should exit 1 with a clear message (rc=$rc)"; exit 1; }
+          echo "OK: Keen 5 without data exits 1 with the 'no game files' message"
+          rc=0; SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy timeout 90 "$k" 4 /PLAYDEMO 0 > "$t/k4.txt" 2>&1 || rc=$?
+          tail -n 20 "$t/k4.txt"
+          case $rc in
+            0|124) echo "OK: Keen 4 started headless (rc=$rc; 0 = demo 0 played to the end, 124 = still running after 90 s)" ;;
+            *) echo "FAIL: Keen 4 exited with $rc"; exit 1 ;;
+          esac
+          tools/check-public-artifact.sh keen456-linux-x86_64.tar.gz
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pkg-linux
+          path: keen456-linux-x86_64.tar.gz
+          if-no-files-found: error
+
+  windows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Package (docker ubuntu:24.04 + mingw-w64, Keen 4 shareware bundled)
+        env:
+          BUILD_ID: ${{ inputs.version }}
+          DOCKER_CPUS: '4'
+          DOCKER_MEM: 8g
+          JOBS: '4'
+        run: |
+          set -euo pipefail
+          tools/package-windows-single.sh public
+          cp dist/keen456-*-windows-x86_64.zip keen456-windows-x86_64.zip
+
+      - name: Check contents
+        run: |
+          set -euo pipefail
+          unzip -l keen456-windows-x86_64.zip
+          list=$(unzip -Z1 keen456-windows-x86_64.zip)
+          for f in keen456/omnispeak.exe keen456/keen456.exe "keen456/Keen 4.bat" "keen456/Keen 5.bat" "keen456/Keen 6.bat" \
+                   keen456/README.txt keen456/LICENSE-omnispeak keen456/omnispeak-src.tar.gz keen456/launcher-src.c \
+                   keen456/data/keen4/EGAGRAPH.CK4 keen456/data/keen4/GAMEMAPS.CK4 keen456/data/keen4/AUDIO.CK4 \
+                   keen456/tables/k4/EPISODE.CK4 keen456/tables/k5/EPISODE.CK5 keen456/tables/k6e14/EPISODE.CK6 keen456/tables/k6e15/EPISODE.CK6; do
+            grep -qxF "$f" <<<"$list" || { echo "FAIL: $f missing"; exit 1; }
+          done
+          other=$(grep '^keen456/data/' <<<"$list" | grep -v '^keen456/data/keen4/' | grep -v '/$' || true)
+          [ -z "$other" ] || { echo "FAIL: data/ holds more than keen4"; exit 1; }
+          file <(unzip -p keen456-windows-x86_64.zip keen456/omnispeak.exe) | grep -q 'PE32+ executable' || { echo "FAIL: omnispeak.exe not PE32+"; exit 1; }
+          tools/check-public-artifact.sh keen456-windows-x86_64.zip
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pkg-windows
+          path: keen456-windows-x86_64.zip
+          if-no-files-found: error
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up emsdk (cached)
+        uses: mymindstorm/setup-emsdk@6ab9eb1bda2574c4ddb79809fc9247783eaf9021 # v14
+        with:
+          version: ${{ env.EMSDK_VERSION }}
+          actions-cache-folder: emsdk-cache
+
+      - name: Pre-build the SDL2 port (once, with retries; parallel make would race the download)
+        run: |
+          for i in 1 2 3 4 5 6; do embuilder build sdl2 && exit 0; echo "retry $i"; sleep 30; done; exit 1
+
+      - name: Fetch Keen 4 v1.4 shareware (freely redistributable)
+        run: KEEN_DATA="$RUNNER_TEMP/keen-data" tools/fetch-k4-shareware.sh
+
+      - name: Build (Keen 4 bundled; Keen 5/6 = engine tables only)
+        run: |
+          set -euo pipefail
+          KEEN_DATA="$RUNNER_TEMP/keen-data" EPISODES="4 5 6" TABLES_ONLY="5 6" tools/build-wasm.sh
+          touch dist/.nojekyll
+          tar czf keen456-web.tar.gz -C dist .
+
+      - name: Guard - no Keen 5/6 game data
+        run: |
+          tools/check-pages-artifact.sh dist
+          tools/check-public-artifact.sh keen456-web.tar.gz
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pkg-web
+          path: keen456-web.tar.gz
+          if-no-files-found: error
+
+      - if: inputs.pages
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
+        with:
+          path: dist

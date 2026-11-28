@@ -1,6 +1,10 @@
 name: "CI: Build (Default)"
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
   build:
@@ -8,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
     - name: Dependencies
       run: |
         sudo apt update
@@ -34,17 +38,17 @@ jobs:
         make PLATFORM=dos
         cp ../csdpmi7b/bin/CWSDPMI.EXE ../bin-dos
     - name: Upload (Linux)
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: Linux Build
         path: bin/
     - name: Upload (Windows)
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: Windows Build
         path: bin-win*/
     - name: Upload (MS-DOS)
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: MS-DOS Build
         path: bin-dos/

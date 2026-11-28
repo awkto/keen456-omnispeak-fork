@@ -1,0 +1,75 @@
+# Push/PR CI: engine build + regression tests on the Keen 4 shareware, then a quick (unsigned)
+# build of every platform package via build.yml. Replaces the old "CI: Demo Dump Tests" (tests.yml).
+# Keen 5/6 data is commercial and is never downloaded here: their demo dumps run locally only.
+name: "CI"
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  engine:
+    name: Engine + demo tests (Keen 4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Dependencies (apt, cached)
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
+        with:
+          packages: libsdl2-dev zstd
+          version: 1
+
+      - name: Data guard (no game data tracked)
+        run: tools/check-no-data.sh
+
+      - name: Build (Linux, null renderer, playloop dumper)
+        working-directory: ./src
+        run: |
+          make -j4 RENDERER=null DEBUG=1
+          make dumpprinter
+
+      - name: Get the Keen 4 v1.4 shareware (freely redistributable)
+        run: |
+          set -euo pipefail
+          KEEN_DATA="$RUNNER_TEMP/keen-data" tools/fetch-k4-shareware.sh
+          cp "$RUNNER_TEMP"/keen-data/keen4/*.CK4 bin/
+
+      - name: Demo dump identity (Keen 4, demos 0-4, tests/demoN.dump4)
+        working-directory: ./bin
+        run: |
+          set -u
+          fail=0
+          for n in 0 1 2 3 4; do ../tests/testdump.sh "$n" 4 || fail=1; done
+          exit $fail
+
+      - name: Demo dump tests (Keen 5/6)
+        run: |
+          echo "SKIP: Keen 5 and Keen 6 demo dumps need the commercial game data, which public CI never uses."
+          echo "      Run them locally: cd bin && ../tests/testdump.sh <demo> 5   (or 6v15) with your own files."
+
+      - name: vanilla-guard (SDL2 debug build, vanilla == tests/, enhanced == vanilla; Keen 4)
+        env:
+          KEEN_DATA: ${{ runner.temp }}/keen-data
+          JOBS: '4'
+        run: |
+          set -o pipefail
+          tools/vanilla-guard.sh --episodes 4 --demos "0 1 2 3 4" | tee "$RUNNER_TEMP/guard.log"
+          grep -q '^vanilla-guard: PASSED' "$RUNNER_TEMP/guard.log" || { echo "FAIL: vanilla-guard did not run/pass"; exit 1; }
+
+  packages:
+    name: Platform builds
+    uses: ./.github/workflows/build.yml
+    with:
+      sign: false
