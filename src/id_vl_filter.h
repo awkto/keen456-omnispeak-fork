@@ -33,6 +33,11 @@ typedef enum
 
 /* filter brightness (#109): compensates what the filter's scanlines/mask/vignette darken */
 typedef enum { VLF_Bright_Off, VLF_Bright_Auto, VLF_Bright_Bright, VLF_Bright_Count } VLF_Bright;
+/* #111: scanline style for every filter with scanlines: one soft line per game row (fine), a
+ * darker narrower gap per game row (strong), or one dark band per two game rows (thick) */
+typedef enum { VLF_ScanStyle_Fine, VLF_ScanStyle_Strong, VLF_ScanStyle_Thick, VLF_ScanStyle_Count } VLF_ScanStyle;
+void VLF_SetScanStyle(int s);
+int VLF_GetScanStyle(void);
 void VLF_SetBrightness(int b);
 int VLF_GetBrightness(void);
 

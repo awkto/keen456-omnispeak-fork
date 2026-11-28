@@ -53,14 +53,14 @@ JNIEXPORT void JNICALL Java_com_awkto_keen456_omni_Native_nativeToggleXray(JNIEn
 }
 
 /* com.awkto.keen456.omni.Native.nativeApplyLive (#110): new zoom / camera / filter / pixels /
- * filter brightness values for the RUNNING game. Only queued here (one atomic word); the engine's
+ * filter brightness / scanline style values for the RUNNING game. Only queued here (one atomic word); the engine's
  * play loop applies them on its own thread, so any thread may call it. */
 JNIEXPORT void JNICALL Java_com_awkto_keen456_omni_Native_nativeApplyLive(JNIEnv *env, jclass cls, jint zoom, jint camera,
-	jint filter, jint pixels, jint bright)
+	jint filter, jint pixels, jint bright, jint scanstyle)
 {
 	(void)env;
 	(void)cls;
-	CK_QueueLiveSettings(zoom, camera, filter, pixels, bright);
+	CK_QueueLiveSettings(zoom, camera, filter, pixels, bright, scanstyle);
 }
 
 /* --- engine log (#102) -------------------------------------------------------

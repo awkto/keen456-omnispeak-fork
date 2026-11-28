@@ -12,8 +12,11 @@
 
 #define GAME_W 320
 /* #103: frames may be wider than 320 game pixels (widescreen); the game width of a w x h frame */
-#define GAME_W_OF(w, h) ((w) * GAME_H / (h))
+#define GAME_W_OF(w, h) ((w) * GameRowsOf(h) / (h))
 #define GAME_H 200
+/* #111: game rows in a frame of height h. Zoomed-out frames (#106) are composed at 3x: 250 or 300
+ * game rows (750 or 900 lines); everything else is 200 rows (200 or 800 lines). */
+static inline int GameRowsOf(int h) { return h == 750 ? 250 : h == 900 ? 300 : GAME_H; }
 
 const char *vlf_filterStrings[] = {"off", "scanlines", "crt", "curved", "rgb", "soft", "amber", "green", 0};
 const char *vlf_pixelsStrings[] = {"crisp", "light", "low", "medium", "high", 0};
@@ -80,6 +83,12 @@ static uint32_t Q(float v)
 	return i < 0 ? 0 : i > 1019 ? 1019 : (uint32_t)i;
 }
 
+/* Scanline style (#111): 0 fine, 1 strong, 2 thick */
+static int curScanStyle = VLF_ScanStyle_Fine;
+static int lutScanStyle = -1;
+void VLF_SetScanStyle(int s) { curScanStyle = (s >= 0 && s < VLF_ScanStyle_Count) ? s : VLF_ScanStyle_Fine; }
+int VLF_GetScanStyle(void) { return curScanStyle; }
+
 /* Per pixel: source position and the RGB multiplier holding scanlines * mask * vignette, all as
  * the old fragment shader computed them. Returns false for pixels outside a curved screen. */
 static bool PixelFactor(const FilterDef *d, int x, int y, int w, int h, int *outSx, int *outSy, float m[3])
@@ -99,8 +108,28 @@ static bool PixelFactor(const FilterDef *d, int x, int y, int w, int h, int *out
 	m[0] = m[1] = m[2] = 1;
 	if (d->scan > 0)
 	{
-		float s = sinf(3.14159265f * v * GAME_H);
-		float k = 1.0f - d->scan + d->scan * s * s;
+		float rows = (float)GameRowsOf(h), k;
+		if (curScanStyle == VLF_ScanStyle_Fine)
+		{
+			float s = sinf(3.14159265f * v * rows);
+			k = 1.0f - d->scan + d->scan * s * s;
+		}
+		else
+		{
+			/* #111: a dark gap centred on the row boundary: fully dark for |d| < 0.12 of the period,
+			 * smoothstep back to full brightness at 0.22 (about 40% of the period dark or fading),
+			 * depth 1.55x the filter's scan factor (0.70 for the 0.45 filters). Strong: period one
+			 * game row; Thick: two game rows. */
+			float per = v * rows / (curScanStyle == VLF_ScanStyle_Thick ? 2.0f : 1.0f);
+			float t = per - floorf(per);
+			float dd = t < 0.5f ? t : 1.0f - t; /* distance to the nearest boundary, 0..0.5 */
+			float e = (dd - 0.12f) / 0.10f;
+			e = e < 0 ? 0 : e > 1 ? 1 : e;
+			e = e * e * (3.0f - 2.0f * e);
+			float depth = d->scan * 1.55f;
+			if (depth > 0.8f) depth = 0.8f;
+			k = 1.0f - depth + depth * e;
+		}
 		m[0] *= k; m[1] *= k; m[2] *= k;
 	}
 	if (d->mask > 0)
@@ -167,7 +196,7 @@ static void BuildLut(VLF_Filter f, int w, int h)
 			lutMul[y * w + x] = (Q(m[0] * gain) + 1u) | (Q(m[1] * gain) + 1u) << 10 | (Q(m[2] * gain) + 1u) << 20; /* factor/256 */
 		}
 	}
-	lutFilter = f; lutW = w; lutH = h; lutBright = curBright;
+	lutFilter = f; lutW = w; lutH = h; lutBright = curBright; lutScanStyle = curScanStyle;
 }
 
 /* Box blur of real width bw (in pixels, >= 1) with fractional edge taps, edges clamped.
@@ -473,7 +502,7 @@ static const uint32_t *ApplyInner(const uint32_t *src, int w, int h, int *outW, 
 	if (curFilter == VLF_Filter_Off)
 		return cur;
 
-	if (lutFilter != (int)curFilter || lutBright != curBright || lutW != ow || lutH != oh)
+	if (lutFilter != (int)curFilter || lutBright != curBright || lutScanStyle != curScanStyle || lutW != ow || lutH != oh)
 		BuildLut(curFilter, ow, oh);
 
 	uint32_t *dst = (cur == bufBlur) ? bufTmp : bufBlur;

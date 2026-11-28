@@ -158,12 +158,12 @@ static bool CK_KeyIsBound(IN_ScanCode sc)
 /* #110 (Android): the Kotlin shell queues new zoom / camera / filter / pixels / brightness values
  * from its UI thread (CK_QueueLiveSettings); the play loop applies them here, on the engine
  * thread, once per frame. 0 = nothing queued. Layout: bit 31 valid, 0-1 zoom, 2-3 camera,
- * 4-7 filter, 8-10 pixels, 11-12 brightness. Zoom and camera follow the profile gating. */
+ * 4-7 filter, 8-10 pixels, 11-12 brightness, 13-14 scanline style (#111). Zoom and camera follow the profile gating. */
 static unsigned int ck_liveSettings;
-void CK_QueueLiveSettings(int zoom, int camera, int filter, int pixels, int bright)
+void CK_QueueLiveSettings(int zoom, int camera, int filter, int pixels, int bright, int scanstyle)
 {
 	unsigned int v = 0x80000000u | ((unsigned)zoom & 3) | ((unsigned)camera & 3) << 2 | ((unsigned)filter & 15) << 4 |
-	                 ((unsigned)pixels & 7) << 8 | ((unsigned)bright & 3) << 11;
+	                 ((unsigned)pixels & 7) << 8 | ((unsigned)bright & 3) << 11 | ((unsigned)scanstyle & 3) << 13;
 	__atomic_store_n(&ck_liveSettings, v, __ATOMIC_RELEASE);
 }
 
@@ -172,7 +172,7 @@ static void CK_ApplyLiveSettings(void)
 	unsigned int v = __atomic_exchange_n(&ck_liveSettings, 0, __ATOMIC_ACQUIRE);
 	if (!v)
 		return;
-	int zoom = v & 3, camera = (v >> 2) & 3, filter = (v >> 4) & 15, pixels = (v >> 8) & 7, bright = (v >> 11) & 3;
+	int zoom = v & 3, camera = (v >> 2) & 3, filter = (v >> 4) & 15, pixels = (v >> 8) & 7, bright = (v >> 11) & 3, scanstyle = (v >> 13) & 3;
 	if (CK_Fix_Enabled(CK_FIX_Zoom) && zoom < RF_ZOOM_LEVELS && zoom != rf_zoomLevel)
 	{
 		rf_zoomLevel = zoom;
@@ -190,6 +190,8 @@ static void CK_ApplyLiveSettings(void)
 		VLF_SetPixels((VLF_Pixels)pixels);
 	if (bright < VLF_Bright_Count)
 		VLF_SetBrightness(bright);
+	if (scanstyle < VLF_ScanStyle_Count)
+		VLF_SetScanStyle(scanstyle);
 }
 
 static void CK_DisplayHotKeys(void)

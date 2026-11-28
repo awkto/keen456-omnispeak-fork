@@ -59,6 +59,7 @@ Options:
   --no-camera               turn off camera smoothing (default: on)
   --filter=NAME             off scanlines crt curved rgb soft amber green (default: off)
   --bright=0|1|2            filter brightness: 0 off, 1 auto (default), 2 bright (B in game)
+  --scanstyle=0|1|2         scanline style: 0 fine (default), 1 strong, 2 thick (a band per two rows)
   --pixels=NAME             crisp light low medium high (default: crisp)
   --classic-controls        no modern pogo (default: Alt = pogo/jump, 180 ms hold)
   --vanilla                 original behaviour: 4:3, no smoothing, no fixes
@@ -115,7 +116,7 @@ fi
 
 ep=
 case $self_name in keen4|keen5|keen6) ep=${self_name#keen} ;; esac
-wide=16:9 smooth=subpixel camera=1 filter= pixels= zoom= deadzone= modern=1 vanilla= xray= fs= border= bright= explicit_wide= explicit_smooth= explicit_cam= explicit_ctl=
+wide=16:9 smooth=subpixel camera=1 filter= pixels= zoom= deadzone= modern=1 vanilla= xray= fs= border= bright= scanstyle= explicit_wide= explicit_smooth= explicit_cam= explicit_ctl=
 
 n=$#
 while [ "$n" -gt 0 ]; do
@@ -135,6 +136,8 @@ while [ "$n" -gt 0 ]; do
         --filter=*) die "bad $a (use off scanlines crt curved rgb soft amber green)" ;;
         --bright=0|--bright=1|--bright=2) bright=${a#--bright=} ;;
         --bright=*) die "bad $a (use 0, 1 or 2)" ;;
+        --scanstyle=0|--scanstyle=1|--scanstyle=2) scanstyle=${a#--scanstyle=} ;;
+        --scanstyle=*) die "bad $a (use 0, 1 or 2)" ;;
         --pixels=crisp|--pixels=light|--pixels=low|--pixels=medium|--pixels=high) pixels=${a#--pixels=} ;;
         --pixels=*) die "bad $a (use crisp light low medium high)" ;;
         --zoom=0|--zoom=1|--zoom=2) zoom=${a#--zoom=} ;;
@@ -204,6 +207,7 @@ if [ -n "$wide" ]; then G="$G /ASPECT $wide /FIX widescreen"; else G="$G /ASPECT
 [ -n "$filter" ] && G="$G /FILTER $filter"
 [ -n "$pixels" ] && G="$G /PIXELS $pixels"
 [ -n "$bright" ] && G="$G /FILTERBRIGHT $bright"
+[ -n "$scanstyle" ] && G="$G /SCANSTYLE $scanstyle"
 [ -n "$xray" ] && G="$G /XRAY"
 [ -n "$zoom" ] && G="$G /ZOOM $zoom"
 [ -n "$deadzone" ] && G="$G /CAMERA $deadzone"
