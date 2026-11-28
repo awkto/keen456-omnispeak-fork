@@ -149,3 +149,15 @@ Scanlines, the RGB mask and the vignette darken the picture (scanlines on their 
 plain look), 1 = auto (the per-filter LUT is multiplied by 1 / mean(scan * mask * vignette), so the
 average brightness matches the unfiltered picture), 2 = bright (auto x 1.15). The LUT factors can
 exceed 1.0; Shade() saturates each channel at 255. Display only: never in frame dumps or the sim.
+
+## Scanline style (#111)
+
+`/SCANSTYLE 0|1|2` (config key `scanstyle`, Android setting "Scanline style") applies to every
+filter with scanlines (scanlines, crt, curved, soft, amber, green). 0 = fine: the original soft
+`1 - scan + scan * sin^2(pi * rows * v)`, one line per game row. 1 = strong: a dark gap centred on
+the row boundary, fully dark within 12% of the period from it, smoothstep back to full
+brightness at 22%, depth 1.55 x the filter's scan factor (0.70 for 0.45): readable at 425 ppi phone
+density where a fine line is ~0.2 mm. 2 = thick: the same profile with a period of two game rows.
+The row count comes from the frame (200, or 250/300 zoomed out, #106), so lines always follow game
+rows; the RGB mask phase and blur width use the same count. Auto brightness takes the mean of the
+real LUT, so it compensates for each style. Android defaults to strong, everything else to fine.

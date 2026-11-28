@@ -616,6 +616,7 @@ int main(int argc, char *argv[])
 	VLF_SetFilter((VLF_Filter)CFG_GetConfigEnum("filter", vlf_filterStrings, VLF_Filter_Off));
 	VLF_SetPixels((VLF_Pixels)CFG_GetConfigEnum("pixels", vlf_pixelsStrings, VLF_Pixels_Crisp));
 	VLF_SetBrightness(CFG_GetConfigInt("filterbright", VLF_Bright_Auto));
+	VLF_SetScanStyle(CFG_GetConfigInt("scanstyle", VLF_ScanStyle_Fine));
 	vl_aspectMode = CFG_GetConfigEnum("aspectMode", vl_aspectStrings, VL_Aspect_Auto);
 	// Zoom out level (keen456-omnispeak-fork #106); shown only with the 'zoom' fix
 	rf_zoomLevel = CFG_GetConfigInt("zoom", 0);
@@ -776,6 +777,13 @@ int main(int argc, char *argv[])
 			if (i + 1 >= argc || argv[i + 1][0] < '0' || argv[i + 1][0] >= '0' + VLF_Bright_Count || argv[i + 1][1])
 				Quit("/FILTERBRIGHT needs 0, 1 or 2");
 			VLF_SetBrightness(argv[++i][0] - '0');
+		}
+		else if (!CK_Cross_strcasecmp(argv[i], "/SCANSTYLE"))
+		{
+			// /SCANSTYLE 0|1|2: scanline style (fine, strong, thick), keen456-omnispeak-fork #111
+			if (i + 1 >= argc || argv[i + 1][0] < '0' || argv[i + 1][0] >= '0' + VLF_ScanStyle_Count || argv[i + 1][1])
+				Quit("/SCANSTYLE needs 0, 1 or 2");
+			VLF_SetScanStyle(argv[++i][0] - '0');
 		}
 		else if (!CK_Cross_strcasecmp(argv[i], "/CAMERA"))
 		{

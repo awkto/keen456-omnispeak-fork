@@ -27,6 +27,7 @@ Release after: <select id="pogohold"><option value="120">120 ms</option><option 
 <div><label title="Display only: hidden passages are drawn see-through with a faint tint. F10+H toggles it in game. Never changes the game."><input type="checkbox" id="xray"> X-ray (reveal secret passages)</label></div>
 <div>Filter: <select id="filter"><option value="off">Off</option><option value="scanlines">Scanlines</option><option value="crt">CRT</option><option value="curved">Curved CRT</option><option value="rgb">RGB mask</option><option value="soft">Soft</option><option value="amber">Amber</option><option value="green">Green</option></select>
 Brightness: <select id="filterbright" title="Makes up for the darkening of scanlines and masks (B in game)"><option value="1">Auto</option><option value="0">Off</option><option value="2">Bright</option></select>
+Scanlines: <select id="scanstyle" title="Fine, strong (darker gap per row) or thick (a band per two rows); for every filter with scanlines"><option value="0">Fine</option><option value="1">Strong</option><option value="2">Thick</option></select>
 Pixels: <select id="pixels"><option value="crisp">Crisp</option><option value="light">Smooth: light</option><option value="low">Smooth: low</option><option value="medium">Smooth: medium</option><option value="high">Smooth: high</option></select>
 Aspect: <select id="aspect"><option value="auto">4:3</option><option value="as-is">As-is (square pixels)</option><option value="16:10">16:10</option><option value="16:9">16:9</option><option value="fit">Fit window</option></select></div>
 <div id="btns"></div>
@@ -134,7 +135,7 @@ function ls(k,v){try{if(v===undefined)return LS.getItem('keen.'+k);LS.setItem('k
  if(m&&[...smooth.options].some(o=>o.value===m))smooth.value=m;
  if(c!==null&&c!==undefined)cam.checked=c==='1';
 }
-for(const id of ['filter','filterbright','pixels','aspect','pogohold','camera']){const el=document.getElementById(id),v=new URLSearchParams(location.search).get(id)||ls(id);
+for(const id of ['filter','filterbright','scanstyle','pixels','aspect','pogohold','camera']){const el=document.getElementById(id),v=new URLSearchParams(location.search).get(id)||ls(id);
  if(v&&[...el.options].some(o=>o.value===v))el.value=v; el.onchange=()=>ls(id,el.value);}
 {const v=ls('mpogo'); if(v!==null&&v!==undefined)mpogo.checked=v==='1';}
 mpogo.onchange=()=>ls('mpogo',mpogo.checked?'1':'0');
@@ -158,7 +159,7 @@ async function start(ep){
   if(cam.checked) args.push('/FIX','camera-smoothing');
   if(mpogo.checked) args.push('/MODERNCONTROLS','/POGOHOLD',pogohold.value); else args.push('/NOMODERNCONTROLS');
   if(xray.checked) args.push('/XRAY'); // #104: display only; F10+H toggles it in game
-  args.push('/FILTER',filter.value,'/FILTERBRIGHT',filterbright.value,'/PIXELS',pixels.value,'/ASPECT',aspect.value);
+  args.push('/FILTER',filter.value,'/FILTERBRIGHT',filterbright.value,'/SCANSTYLE',scanstyle.value,'/PIXELS',pixels.value,'/ASPECT',aspect.value);
   if(['16:10','16:9','fit'].includes(aspect.value)) args.push('/FIX','widescreen'); // #103: wider view, also with smoothing off
   args.push('/FIX','zoom'); // #106: the Z key zooms out, also with smoothing off (level 0 = normal view)
   args.push('/FIX','camera-deadzone','/CAMERA',camera.value); // #108: camera dead zone; C cycles it in game

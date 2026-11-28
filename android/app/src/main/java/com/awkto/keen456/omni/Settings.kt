@@ -59,6 +59,8 @@ object Settings {
     fun pixels(p: SharedPreferences) = p.getString("pixels", "crisp") ?: "crisp"
     /** Filter brightness: 0 off, 1 auto (default), 2 bright; the engine's /FILTERBRIGHT (#109). */
     fun filterBright(p: SharedPreferences) = p.getInt("filterBright", 1).coerceIn(0, 2)
+    /** Scanline style (#111): 0 fine, 1 strong (default here: visible at phone pixel density), 2 thick. */
+    fun scanStyle(p: SharedPreferences) = p.getInt("scanStyle", 1).coerceIn(0, 2)
     fun xrayAtStart(p: SharedPreferences) = p.getBoolean("xray", false)
     /** The engine's QuickSave/QuickLoad "Really ...? (Y/N)" prompt; off by default (one-tap 💾). */
     fun quickSaveConfirm(p: SharedPreferences) = p.getBoolean("quickSaveConfirm", false)
@@ -79,7 +81,8 @@ object Settings {
         // Alt on a hardware keyboard; the touch POGO button is always modern.
         a += if (modernKeyboard(p)) "/MODERNCONTROLS" else "/NOMODERNCONTROLS"
         a += listOf("/POGOHOLD", pogoHold(p).uppercase())
-        a += listOf("/FILTER", filter(p), "/PIXELS", pixels(p), "/FILTERBRIGHT", filterBright(p).toString())
+        a += listOf("/FILTER", filter(p), "/PIXELS", pixels(p), "/FILTERBRIGHT", filterBright(p).toString(),
+            "/SCANSTYLE", scanStyle(p).toString())
         // Portrait shows a 4:3 pane: never the widescreen view.
         a += listOf("/ASPECT", "4:3")
         a += if (xrayAtStart(p)) "/XRAY" else "/NOXRAY"
@@ -101,7 +104,7 @@ object Settings {
         val p = prefs(ctx)
         try {
             liveFile(ctx).writeText("${zoom(p)} ${cameraDeadzone(p)} ${idxOf(FILTER_KEYS, filter(p))} " +
-                "${idxOf(PIXELS_KEYS, pixels(p))} ${filterBright(p)}\n")
+                "${idxOf(PIXELS_KEYS, pixels(p))} ${filterBright(p)} ${scanStyle(p)}\n")
         } catch (e: java.io.IOException) {
             android.util.Log.w("Settings", "live settings not saved: $e")
         }
@@ -110,7 +113,7 @@ object Settings {
     /** Push the live file (if any) into the running engine. Call from the game process. */
     fun applyLive(ctx: Context) {
         val v = try { liveFile(ctx).readText().trim().split(" ").map { it.toInt() } } catch (e: Exception) { return }
-        if (v.size == 5) Native.applyLive(v[0], v[1], v[2], v[3], v[4])
+        if (v.size >= 5) Native.applyLive(v[0], v[1], v[2], v[3], v[4], v.getOrElse(5) { scanStyle(prefs(ctx)) })
     }
 
     private fun idxOf(keys: Array<String>, v: String) = keys.indexOf(v).coerceAtLeast(0)
@@ -126,7 +129,7 @@ object Settings {
     val ZOOM_NAMES = arrayOf("Normal", "Zoom out 1 (1.25x)", "Zoom out 2 (1.5x)")
     val CAMERA_NAMES = arrayOf("Vanilla", "Scaled", "Loose", "Very loose")
     private val ALL_KEYS = arrayOf("smoothing", "profile", "cameraSmoothing", "cameraDeadzone", "pogohold",
-        "modernKeyboard", "fullscreen", "filter", "pixels", "xray", "quickSaveConfirm", "egaBorder", "zoom", "filterBright")
+        "modernKeyboard", "fullscreen", "filter", "pixels", "xray", "quickSaveConfirm", "egaBorder", "zoom", "filterBright", "scanStyle")
 
     /**
      * The settings dialog, shared by the picker and the game. onChanged runs
@@ -217,7 +220,7 @@ object Settings {
         }
 
         col.addView(TextView(ctx).apply {
-            this.text = if (inGame) "Zoom, Camera, Screen filter, Filter brightness and Pixels apply now. " +
+            this.text = if (inGame) "Zoom, Camera, Screen filter, Filter brightness, Scanline style and Pixels apply now. " +
                 "Other changes apply the next time you start a game."
             else "Zoom, Camera and the screen filter options also reach a game that is already running; " +
                 "the rest apply when a game starts."
@@ -232,6 +235,8 @@ object Settings {
             p.edit().putString("filter", FILTER_KEYS[it]).apply() }
         drop("Filter brightness", "Make up for the darkening of scanlines and masks", arrayOf("Off", "Auto", "Bright"),
             filterBright(p)) { p.edit().putInt("filterBright", it).apply() }
+        drop("Scanline style", "Fine, Strong (one dark gap per row) or Thick (per two rows); for every filter with scanlines",
+            arrayOf("Fine", "Strong", "Thick"), scanStyle(p)) { p.edit().putInt("scanStyle", it).apply() }
         drop("Pixels", "Sharp or smoothed pixel edges", arrayOf("Crisp", "Smooth: light", "Smooth: low",
             "Smooth: medium", "Smooth: high"), idx(PIXELS_KEYS, pixels(p))) {
             p.edit().putString("pixels", PIXELS_KEYS[it]).apply() }

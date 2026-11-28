@@ -36,9 +36,9 @@ object Native {
      * Push zoom, camera, filter, pixels and filter brightness (indexes, see Settings) into the
      * running game. Queued natively; the engine applies them in its play loop (#110).
      */
-    fun applyLive(zoom: Int, camera: Int, filter: Int, pixels: Int, bright: Int) {
+    fun applyLive(zoom: Int, camera: Int, filter: Int, pixels: Int, bright: Int, scanStyle: Int) {
         try {
-            nativeApplyLive(zoom, camera, filter, pixels, bright)
+            nativeApplyLive(zoom, camera, filter, pixels, bright, scanStyle)
         } catch (e: UnsatisfiedLinkError) {
             // libmain.so not loaded (yet); the launch arguments carry the values.
         }
@@ -62,5 +62,5 @@ object Native {
     @JvmStatic private external fun nativeStartLog(logPath: String, diag: Boolean)
     @JvmStatic private external fun nativeSetTouchPogo(down: Boolean)
     @JvmStatic private external fun nativeToggleXray()
-    @JvmStatic private external fun nativeApplyLive(zoom: Int, camera: Int, filter: Int, pixels: Int, bright: Int)
+    @JvmStatic private external fun nativeApplyLive(zoom: Int, camera: Int, filter: Int, pixels: Int, bright: Int, scanStyle: Int)
 }
