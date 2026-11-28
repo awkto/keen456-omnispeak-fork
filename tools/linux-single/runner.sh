@@ -58,6 +58,7 @@ Options:
   --smooth=off|grid|pixel|subpixel   display-rate smoothing (default: subpixel)
   --no-camera               turn off camera smoothing (default: on)
   --filter=NAME             off scanlines crt curved rgb soft amber green (default: off)
+  --bright=0|1|2            filter brightness: 0 off, 1 auto (default), 2 bright (B in game)
   --pixels=NAME             crisp light low medium high (default: crisp)
   --classic-controls        no modern pogo (default: Alt = pogo/jump, 180 ms hold)
   --vanilla                 original behaviour: 4:3, no smoothing, no fixes
@@ -70,7 +71,7 @@ Options:
   --data DIR                game files: DIR containing keen4/ keen5/ keen6/ or the .CKx files
                             (or env KEEN_DATA; or put them in ~/.local/share/keen456/data)
   -h, --help                this text
-In game: V cycles the screen filter, Z the zoom, C the camera dead zone (all remembered), F10+H toggles x-ray.
+In game: V cycles the screen filter, B its brightness, Z the zoom, C the camera dead zone (all remembered), F10+H toggles x-ray.
 Other /ENGINEARGS (e.g. /NOVSYNC /INTEGER /FIX name) go straight to the engine.
 Preferences: put options in ${XDG_CONFIG_HOME:-~/.config}/keen456/args (one per line).
 Saves/config: ${XDG_DATA_HOME:-~/.local/share}/keen456/keen<N>/
@@ -114,7 +115,7 @@ fi
 
 ep=
 case $self_name in keen4|keen5|keen6) ep=${self_name#keen} ;; esac
-wide=16:9 smooth=subpixel camera=1 filter= pixels= zoom= deadzone= modern=1 vanilla= xray= fs= border= explicit_wide= explicit_smooth= explicit_cam= explicit_ctl=
+wide=16:9 smooth=subpixel camera=1 filter= pixels= zoom= deadzone= modern=1 vanilla= xray= fs= border= bright= explicit_wide= explicit_smooth= explicit_cam= explicit_ctl=
 
 n=$#
 while [ "$n" -gt 0 ]; do
@@ -132,6 +133,8 @@ while [ "$n" -gt 0 ]; do
         --camera) camera=1; explicit_cam=1 ;;
         --filter=off|--filter=scanlines|--filter=crt|--filter=curved|--filter=rgb|--filter=soft|--filter=amber|--filter=green) filter=${a#--filter=} ;;
         --filter=*) die "bad $a (use off scanlines crt curved rgb soft amber green)" ;;
+        --bright=0|--bright=1|--bright=2) bright=${a#--bright=} ;;
+        --bright=*) die "bad $a (use 0, 1 or 2)" ;;
         --pixels=crisp|--pixels=light|--pixels=low|--pixels=medium|--pixels=high) pixels=${a#--pixels=} ;;
         --pixels=*) die "bad $a (use crisp light low medium high)" ;;
         --zoom=0|--zoom=1|--zoom=2) zoom=${a#--zoom=} ;;
@@ -200,6 +203,7 @@ if [ -n "$modern" ] && [ -z "$vanilla" ]; then G="$G /MODERNCONTROLS /POGOHOLD 1
 if [ -n "$wide" ]; then G="$G /ASPECT $wide /FIX widescreen"; else G="$G /ASPECT auto"; fi
 [ -n "$filter" ] && G="$G /FILTER $filter"
 [ -n "$pixels" ] && G="$G /PIXELS $pixels"
+[ -n "$bright" ] && G="$G /FILTERBRIGHT $bright"
 [ -n "$xray" ] && G="$G /XRAY"
 [ -n "$zoom" ] && G="$G /ZOOM $zoom"
 [ -n "$deadzone" ] && G="$G /CAMERA $deadzone"

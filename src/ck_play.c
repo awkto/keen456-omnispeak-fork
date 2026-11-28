@@ -155,9 +155,47 @@ static bool CK_KeyIsBound(IN_ScanCode sc)
 	return false;
 }
 
+/* #110 (Android): the Kotlin shell queues new zoom / camera / filter / pixels / brightness values
+ * from its UI thread (CK_QueueLiveSettings); the play loop applies them here, on the engine
+ * thread, once per frame. 0 = nothing queued. Layout: bit 31 valid, 0-1 zoom, 2-3 camera,
+ * 4-7 filter, 8-10 pixels, 11-12 brightness. Zoom and camera follow the profile gating. */
+static unsigned int ck_liveSettings;
+void CK_QueueLiveSettings(int zoom, int camera, int filter, int pixels, int bright)
+{
+	unsigned int v = 0x80000000u | ((unsigned)zoom & 3) | ((unsigned)camera & 3) << 2 | ((unsigned)filter & 15) << 4 |
+	                 ((unsigned)pixels & 7) << 8 | ((unsigned)bright & 3) << 11;
+	__atomic_store_n(&ck_liveSettings, v, __ATOMIC_RELEASE);
+}
+
+static void CK_ApplyLiveSettings(void)
+{
+	unsigned int v = __atomic_exchange_n(&ck_liveSettings, 0, __ATOMIC_ACQUIRE);
+	if (!v)
+		return;
+	int zoom = v & 3, camera = (v >> 2) & 3, filter = (v >> 4) & 15, pixels = (v >> 8) & 7, bright = (v >> 11) & 3;
+	if (CK_Fix_Enabled(CK_FIX_Zoom) && zoom < RF_ZOOM_LEVELS && zoom != rf_zoomLevel)
+	{
+		rf_zoomLevel = zoom;
+		CFG_SetConfigInt("zoom", zoom);
+		CK_ZoomChanged();
+	}
+	if (CK_Fix_Enabled(CK_FIX_CameraDeadzone) && camera < CK_CAMERA_LEVELS && camera != ck_cameraLevel)
+	{
+		ck_cameraLevel = camera;
+		CFG_SetConfigInt("camera", camera);
+	}
+	if (filter < VLF_Filter_Count)
+		VLF_SetFilter((VLF_Filter)filter);
+	if (pixels < VLF_Pixels_Count)
+		VLF_SetPixels((VLF_Pixels)pixels);
+	if (bright < VLF_Bright_Count)
+		VLF_SetBrightness(bright);
+}
+
 static void CK_DisplayHotKeys(void)
 {
-	static bool vWas = true, zWas = true, cWas = true; /* a key held on entry is not a press */
+	CK_ApplyLiveSettings();
+	static bool vWas = true, zWas = true, cWas = true, bWas = true; /* a key held on entry is not a press */
 	static const char *cameraLabels[CK_CAMERA_LEVELS] = {"CAMERA: VANILLA", "CAMERA: SCALED", "CAMERA: LOOSE", "CAMERA: VERY LOOSE"};
 	static const char *filterLabels[VLF_Filter_Count] = {"FILTER: OFF", "FILTER: SCANLINES", "FILTER: CRT",
 		"FILTER: CURVED", "FILTER: RGB", "FILTER: SOFT", "FILTER: AMBER", "FILTER: GREEN"};
@@ -196,9 +234,20 @@ static void CK_DisplayHotKeys(void)
 			VLF_ShowLabel(cameraLabels[ck_cameraLevel]);
 		}
 	}
+	/* #109: a plain B cycles the filter brightness (off, auto, bright) */
+	static const char *brightLabels[VLF_Bright_Count] = {"BRIGHTNESS: OFF", "BRIGHTNESS: AUTO", "BRIGHTNESS: BRIGHT"};
+	bool b = IN_GetKeyState(IN_SC_B);
+	if (b && !bWas && !f10 && !CK_KeyIsBound(IN_SC_B))
+	{
+		int nb = (VLF_GetBrightness() + 1) % VLF_Bright_Count;
+		VLF_SetBrightness(nb);
+		CFG_SetConfigInt("filterbright", nb);
+		VLF_ShowLabel(brightLabels[nb]);
+	}
 	vWas = v;
 	zWas = z;
 	cWas = c;
+	bWas = b;
 }
 #endif
 

@@ -31,6 +31,11 @@ typedef enum
 	VLF_Pixels_Count
 } VLF_Pixels;
 
+/* filter brightness (#109): compensates what the filter's scanlines/mask/vignette darken */
+typedef enum { VLF_Bright_Off, VLF_Bright_Auto, VLF_Bright_Bright, VLF_Bright_Count } VLF_Bright;
+void VLF_SetBrightness(int b);
+int VLF_GetBrightness(void);
+
 extern const char *vlf_filterStrings[]; /* NULL terminated, for CFG_GetConfigEnum */
 extern const char *vlf_pixelsStrings[];
 
