@@ -72,6 +72,7 @@ build() {
 	if ! timeout 900 $NICE make -C "$1/src" -j"$JOBS" DEBUG=1 RENDERER=sdl2 \
 		BINDIR="$2/bin" OBJDIR="$2/obj" > "$2.build.log" 2>&1; then
 		echo "FAIL: build of $1 failed, see $2.build.log"
+		tail -n 30 "$2.build.log"
 		KEEP=1
 		exit 1
 	fi

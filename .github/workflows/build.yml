@@ -35,22 +35,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           fetch-depth: 0   # versionCode counts commits
 
-      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: '17'
           cache: gradle
 
-      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:
           packages: 'platform-tools platforms;android-34 build-tools;34.0.0 ndk;27.2.12479018 cmake;3.22.1'
 
       - name: Cache SDL2 source (pinned in tools/build-android.sh)
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: android/deps
           key: android-deps-${{ hashFiles('tools/build-android.sh') }}
@@ -103,7 +103,7 @@ jobs:
           unzip -Z1 keen456-omni.apk | grep '^assets/game/'
           tools/check-public-artifact.sh keen456-omni.apk
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: pkg-android
           path: keen456-omni.apk
@@ -113,7 +113,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Package (docker ubuntu:22.04 engine build, Keen 4 shareware bundled)
         env:
@@ -145,6 +145,8 @@ jobs:
       - name: Smoke test (--help, missing-data message, Keen 4 headless start)
         run: |
           set -euo pipefail
+          # runtime libs SDL2 links that every desktop has but the bare runner lacks
+          sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libpulse0 libdecor-0-0 >/dev/null
           t=$(mktemp -d); tar xzf keen456-linux-x86_64.tar.gz -C "$t"
           k=$t/keen456-linux-x86_64/keen456
           "$k" --help | tee "$t/help.txt"
@@ -161,7 +163,7 @@ jobs:
           esac
           tools/check-public-artifact.sh keen456-linux-x86_64.tar.gz
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: pkg-linux
           path: keen456-linux-x86_64.tar.gz
@@ -171,7 +173,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Package (docker ubuntu:24.04 + mingw-w64, Keen 4 shareware bundled)
         env:
@@ -197,10 +199,10 @@ jobs:
           done
           other=$(grep '^keen456/data/' <<<"$list" | grep -v '^keen456/data/keen4/' | grep -v '/$' || true)
           [ -z "$other" ] || { echo "FAIL: data/ holds more than keen4"; exit 1; }
-          file <(unzip -p keen456-windows-x86_64.zip keen456/omnispeak.exe) | grep -q 'PE32+ executable' || { echo "FAIL: omnispeak.exe not PE32+"; exit 1; }
+          unzip -p keen456-windows-x86_64.zip keen456/omnispeak.exe | file - | grep -q 'PE32+ executable' || { echo "FAIL: omnispeak.exe not PE32+"; exit 1; }
           tools/check-public-artifact.sh keen456-windows-x86_64.zip
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: pkg-windows
           path: keen456-windows-x86_64.zip
@@ -210,10 +212,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Set up emsdk (cached)
-        uses: mymindstorm/setup-emsdk@6ab9eb1bda2574c4ddb79809fc9247783eaf9021 # v14
+        uses: mymindstorm/setup-emsdk@667eb33f24e84e7f362c16d8d7fff0629a73e15e # v15
         with:
           version: ${{ env.EMSDK_VERSION }}
           actions-cache-folder: emsdk-cache
@@ -237,7 +239,7 @@ jobs:
           tools/check-pages-artifact.sh dist
           tools/check-public-artifact.sh keen456-web.tar.gz
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: pkg-web
           path: keen456-web.tar.gz
