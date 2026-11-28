@@ -141,3 +141,11 @@ per-frame filter cost to the stats line.
 
 In the browser an explicit aspect mode makes the canvas fill the window and the engine
 letterboxes inside it. The launcher accepts `?filter=crt&pixels=low&aspect=16:9` to preselect.
+
+## Filter brightness (#109)
+
+Scanlines, the RGB mask and the vignette darken the picture (scanlines on their own average about
+0.775). `/FILTERBRIGHT 0|1|2` (config key `filterbright`, B in game) lifts it back: 0 = off (the
+plain look), 1 = auto (the per-filter LUT is multiplied by 1 / mean(scan * mask * vignette), so the
+average brightness matches the unfiltered picture), 2 = bright (auto x 1.15). The LUT factors can
+exceed 1.0; Shade() saturates each channel at 255. Display only: never in frame dumps or the sim.

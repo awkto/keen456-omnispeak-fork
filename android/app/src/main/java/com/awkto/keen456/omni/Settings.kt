@@ -57,6 +57,8 @@ object Settings {
     fun fullscreen(p: SharedPreferences) = p.getBoolean("fullscreen", true)
     fun filter(p: SharedPreferences) = p.getString("filter", "off") ?: "off"
     fun pixels(p: SharedPreferences) = p.getString("pixels", "crisp") ?: "crisp"
+    /** Filter brightness: 0 off, 1 auto (default), 2 bright; the engine's /FILTERBRIGHT (#109). */
+    fun filterBright(p: SharedPreferences) = p.getInt("filterBright", 1).coerceIn(0, 2)
     fun xrayAtStart(p: SharedPreferences) = p.getBoolean("xray", false)
     /** The engine's QuickSave/QuickLoad "Really ...? (Y/N)" prompt; off by default (one-tap 💾). */
     fun quickSaveConfirm(p: SharedPreferences) = p.getBoolean("quickSaveConfirm", false)
@@ -77,7 +79,7 @@ object Settings {
         // Alt on a hardware keyboard; the touch POGO button is always modern.
         a += if (modernKeyboard(p)) "/MODERNCONTROLS" else "/NOMODERNCONTROLS"
         a += listOf("/POGOHOLD", pogoHold(p).uppercase())
-        a += listOf("/FILTER", filter(p), "/PIXELS", pixels(p))
+        a += listOf("/FILTER", filter(p), "/PIXELS", pixels(p), "/FILTERBRIGHT", filterBright(p).toString())
         // Portrait shows a 4:3 pane: never the widescreen view.
         a += listOf("/ASPECT", "4:3")
         a += if (xrayAtStart(p)) "/XRAY" else "/NOXRAY"
@@ -86,6 +88,32 @@ object Settings {
         a += "/VSYNC"
         return a
     }
+
+    /**
+     * The values a running game can take without a restart (#110): zoom, camera, filter, pixels,
+     * filter brightness. SharedPreferences is not reliable between the picker (main process) and
+     * the game (:game process), so every change also lands in this small file, which the game
+     * reads when it comes back to the front and after each change made in its own dialog.
+     */
+    private fun liveFile(ctx: Context) = java.io.File(ctx.filesDir, "live.txt")
+
+    fun writeLive(ctx: Context) {
+        val p = prefs(ctx)
+        try {
+            liveFile(ctx).writeText("${zoom(p)} ${cameraDeadzone(p)} ${idxOf(FILTER_KEYS, filter(p))} " +
+                "${idxOf(PIXELS_KEYS, pixels(p))} ${filterBright(p)}\n")
+        } catch (e: java.io.IOException) {
+            android.util.Log.w("Settings", "live settings not saved: $e")
+        }
+    }
+
+    /** Push the live file (if any) into the running engine. Call from the game process. */
+    fun applyLive(ctx: Context) {
+        val v = try { liveFile(ctx).readText().trim().split(" ").map { it.toInt() } } catch (e: Exception) { return }
+        if (v.size == 5) Native.applyLive(v[0], v[1], v[2], v[3], v[4])
+    }
+
+    private fun idxOf(keys: Array<String>, v: String) = keys.indexOf(v).coerceAtLeast(0)
 
     private var dlgRef: AlertDialog? = null
     private fun setEnabledDeep(v: View, on: Boolean) {
@@ -98,7 +126,7 @@ object Settings {
     val ZOOM_NAMES = arrayOf("Normal", "Zoom out 1 (1.25x)", "Zoom out 2 (1.5x)")
     val CAMERA_NAMES = arrayOf("Vanilla", "Scaled", "Loose", "Very loose")
     private val ALL_KEYS = arrayOf("smoothing", "profile", "cameraSmoothing", "cameraDeadzone", "pogohold",
-        "modernKeyboard", "fullscreen", "filter", "pixels", "xray", "quickSaveConfirm", "egaBorder", "zoom")
+        "modernKeyboard", "fullscreen", "filter", "pixels", "xray", "quickSaveConfirm", "egaBorder", "zoom", "filterBright")
 
     /**
      * The settings dialog, shared by the picker and the game. onChanged runs
@@ -168,7 +196,7 @@ object Settings {
             sp.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
                 override fun onItemSelected(a: AdapterView<*>?, v: View?, pos: Int, id: Long) {
                     if (first) { first = false; return }
-                    onPick(pos); onChanged()
+                    onPick(pos); writeLive(ctx); onChanged()
                 }
                 override fun onNothingSelected(a: AdapterView<*>?) {}
             }
@@ -178,7 +206,7 @@ object Settings {
                    onSet: (Boolean) -> Unit) {
             val sw = Switch(ctx).apply {
                 isChecked = cur
-                setOnCheckedChangeListener { _, on -> onSet(on); onChanged() }
+                setOnCheckedChangeListener { _, on -> onSet(on); writeLive(ctx); onChanged() }
             }
             val box = LinearLayout(ctx).apply { gravity = Gravity.END; addView(sw) }
             row(label, hint, enhancedOnly, box, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -189,9 +217,10 @@ object Settings {
         }
 
         col.addView(TextView(ctx).apply {
-            this.text = if (inGame) "Picture and Motion changes apply the next time you start a game. " +
-                "Fullscreen applies now."
-            else "Changes apply when a game starts."
+            this.text = if (inGame) "Zoom, Camera, Screen filter, Filter brightness and Pixels apply now. " +
+                "Other changes apply the next time you start a game."
+            else "Zoom, Camera and the screen filter options also reach a game that is already running; " +
+                "the rest apply when a game starts."
             setTextColor(dim); textSize = 12f
         })
 
@@ -201,6 +230,8 @@ object Settings {
         drop("Screen filter", "CRT-style looks and tints", arrayOf("Off", "Scanlines", "CRT", "Curved CRT",
             "RGB grille", "Soft", "Amber", "Green"), idx(FILTER_KEYS, filter(p))) {
             p.edit().putString("filter", FILTER_KEYS[it]).apply() }
+        drop("Filter brightness", "Make up for the darkening of scanlines and masks", arrayOf("Off", "Auto", "Bright"),
+            filterBright(p)) { p.edit().putInt("filterBright", it).apply() }
         drop("Pixels", "Sharp or smoothed pixel edges", arrayOf("Crisp", "Smooth: light", "Smooth: low",
             "Smooth: medium", "Smooth: high"), idx(PIXELS_KEYS, pixels(p))) {
             p.edit().putString("pixels", PIXELS_KEYS[it]).apply() }
@@ -243,7 +274,7 @@ object Settings {
                     .setMessage("Every option goes back to its default.")
                     .setPositiveButton("Reset") { _, _ ->
                         val e = p.edit(); for (k in ALL_KEYS) e.remove(k); e.apply()
-                        onChanged(); dlgRef?.dismiss(); show(ctx, inGame, onChanged)
+                        writeLive(ctx); onChanged(); dlgRef?.dismiss(); show(ctx, inGame, onChanged)
                     }.setNegativeButton("Cancel", null).show()
             }
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)

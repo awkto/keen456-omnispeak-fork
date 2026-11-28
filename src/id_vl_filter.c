@@ -73,62 +73,101 @@ static void EnsureBuffers(int w, int h)
 	}
 }
 
-static uint8_t Q(float v)
+/* Factor v (1.0 = unchanged) as 0..1019 (callers add 1: 256 = exact). Up to ~4x. */
+static uint32_t Q(float v)
 {
 	int i = (int)(v * 255.0f + 0.5f);
-	return i < 0 ? 0 : i > 255 ? 255 : i;
+	return i < 0 ? 0 : i > 1019 ? 1019 : (uint32_t)i;
 }
 
-/* Per output pixel: source (y << 16 | x) (or -1 outside the curved screen) and an RGB multiplier
- * holding scanlines * mask * vignette, all as the old fragment shader computed them. */
+/* Per pixel: source position and the RGB multiplier holding scanlines * mask * vignette, all as
+ * the old fragment shader computed them. Returns false for pixels outside a curved screen. */
+static bool PixelFactor(const FilterDef *d, int x, int y, int w, int h, int *outSx, int *outSy, float m[3])
+{
+	float px = ((x + 0.5f) / w) * 2.0f - 1.0f, py = ((y + 0.5f) / h) * 2.0f - 1.0f;
+	int sx = x, sy = y;
+	if (d->curve > 0)
+	{
+		float k = 1.0f + d->curve * (px * px + py * py);
+		px *= k; py *= k;
+		float u = px * 0.5f + 0.5f, v = py * 0.5f + 0.5f;
+		sx = (int)floorf(u * w); sy = (int)floorf(v * h);
+		if (u < 0 || u > 1 || v < 0 || v > 1 || sx < 0 || sx >= w || sy < 0 || sy >= h)
+			return false;
+	}
+	float u = px * 0.5f + 0.5f, v = py * 0.5f + 0.5f;
+	m[0] = m[1] = m[2] = 1;
+	if (d->scan > 0)
+	{
+		float s = sinf(3.14159265f * v * GAME_H);
+		float k = 1.0f - d->scan + d->scan * s * s;
+		m[0] *= k; m[1] *= k; m[2] *= k;
+	}
+	if (d->mask > 0)
+	{
+		int ph = (int)floorf(u * GAME_W_OF(w, h)) % 3;
+		if (ph < 0) ph += 3;
+		for (int c = 0; c < 3; ++c)
+			if (c != ph)
+				m[c] *= 1.0f - d->mask;
+	}
+	if (d->vig > 0)
+	{
+		float k = 1.0f - d->vig * (px * px + py * py) * 0.5f;
+		m[0] *= k; m[1] *= k; m[2] *= k;
+	}
+	*outSx = sx; *outSy = sy;
+	return true;
+}
+
+/* Filter brightness (#109): 0 off (the plain look), 1 auto (gain = 1 / mean of the filter's own
+ * darkening, so the average picture brightness matches the unfiltered one), 2 bright (auto * 1.15). */
+static int curBright = 1;
+static int lutBright = -1;
+void VLF_SetBrightness(int b) { curBright = (b >= 0 && b < VLF_Bright_Count) ? b : VLF_Bright_Auto; }
+int VLF_GetBrightness(void) { return curBright; }
+
+static float AutoGain(const FilterDef *d, int w, int h)
+{
+	double sum = 0;
+	long n = 0;
+	for (int y = 0; y < h; ++y)
+		for (int x = 0; x < w; ++x)
+		{
+			float m[3];
+			int sx, sy;
+			if (!PixelFactor(d, x, y, w, h, &sx, &sy, m))
+				continue;
+			sum += (m[0] + m[1] + m[2]) / 3.0f;
+			++n;
+		}
+	double mean = n ? sum / n : 1.0;
+	return mean > 0.2 ? (float)(1.0 / mean) : 5.0f;
+}
+
 static void BuildLut(VLF_Filter f, int w, int h)
 {
 	const FilterDef *d = &defs[f];
+	float gain = 1.0f;
+	if (curBright >= VLF_Bright_Auto)
+		gain = AutoGain(d, w, h) * (curBright == VLF_Bright_Bright ? 1.15f : 1.0f);
 	for (int y = 0; y < h; ++y)
 	{
 		for (int x = 0; x < w; ++x)
 		{
-			float px = ((x + 0.5f) / w) * 2.0f - 1.0f, py = ((y + 0.5f) / h) * 2.0f - 1.0f;
-			int sx = x, sy = y;
-			if (d->curve > 0)
+			float m[3];
+			int sx, sy;
+			if (!PixelFactor(d, x, y, w, h, &sx, &sy, m))
 			{
-				float k = 1.0f + d->curve * (px * px + py * py);
-				px *= k; py *= k;
-				float u = px * 0.5f + 0.5f, v = py * 0.5f + 0.5f;
-				sx = (int)floorf(u * w); sy = (int)floorf(v * h);
-				if (u < 0 || u > 1 || v < 0 || v > 1 || sx < 0 || sx >= w || sy < 0 || sy >= h)
-				{
-					lutIdx[y * w + x] = -1;
-					lutMul[y * w + x] = 0x00100401u; /* black-ish: factor 1/256 */
-					continue;
-				}
-			}
-			float u = px * 0.5f + 0.5f, v = py * 0.5f + 0.5f;
-			float m[3] = {1, 1, 1};
-			if (d->scan > 0)
-			{
-				float s = sinf(3.14159265f * v * GAME_H);
-				float k = 1.0f - d->scan + d->scan * s * s;
-				m[0] *= k; m[1] *= k; m[2] *= k;
-			}
-			if (d->mask > 0)
-			{
-				int ph = (int)floorf(u * GAME_W_OF(w, h)) % 3;
-				if (ph < 0) ph += 3;
-				for (int c = 0; c < 3; ++c)
-					if (c != ph)
-						m[c] *= 1.0f - d->mask;
-			}
-			if (d->vig > 0)
-			{
-				float k = 1.0f - d->vig * (px * px + py * py) * 0.5f;
-				m[0] *= k; m[1] *= k; m[2] *= k;
+				lutIdx[y * w + x] = -1;
+				lutMul[y * w + x] = 0x00100401u; /* black-ish: factor 1/256 */
+				continue;
 			}
 			lutIdx[y * w + x] = (sy << 16) | sx;
-			lutMul[y * w + x] = (Q(m[0]) + 1u) | (Q(m[1]) + 1u) << 10 | (Q(m[2]) + 1u) << 20; /* factor/256, 1..256 */
+			lutMul[y * w + x] = (Q(m[0] * gain) + 1u) | (Q(m[1] * gain) + 1u) << 10 | (Q(m[2] * gain) + 1u) << 20; /* factor/256 */
 		}
 	}
-	lutFilter = f; lutW = w; lutH = h;
+	lutFilter = f; lutW = w; lutH = h; lutBright = curBright;
 }
 
 /* Box blur of real width bw (in pixels, >= 1) with fractional edge taps, edges clamped.
@@ -211,15 +250,17 @@ static void BoxBlur(const uint32_t *src, uint32_t *dst, uint32_t *tmp, int w, in
 	free(B);
 }
 
-/* c: ARGB pixel, m: three 10-bit factors (1..256 = x/256). 256 keeps a channel exact. */
+/* c: ARGB pixel, m: three 10-bit factors (x/256, 256 keeps a channel exact, above 256 brightens).
+ * Channels saturate at 255. */
+static inline uint32_t Sat8(uint32_t v) { return v < 255u ? v : 255u; }
 static inline uint32_t Shade(uint32_t c, uint32_t m)
 {
-	return 0xFF000000u | ((((c >> 16) & 255) * (m & 1023)) >> 8) << 16 | ((((c >> 8) & 255) * ((m >> 10) & 1023)) >> 8) << 8 | (((c & 255) * ((m >> 20) & 1023)) >> 8);
+	return 0xFF000000u | Sat8((((c >> 16) & 255) * (m & 1023)) >> 8) << 16 | Sat8((((c >> 8) & 255) * ((m >> 10) & 1023)) >> 8) << 8 | Sat8(((c & 255) * ((m >> 20) & 1023)) >> 8);
 }
 static inline uint32_t ShadeTint(uint32_t c, uint32_t m, uint32_t t0, uint32_t t1, uint32_t t2)
 {
 	uint32_t lum = (((c >> 16) & 255) * 77 + ((c >> 8) & 255) * 150 + (c & 255) * 29) >> 8;
-	return 0xFF000000u | (((lum * t0 >> 8) * (m & 1023)) >> 8) << 16 | (((lum * t1 >> 8) * ((m >> 10) & 1023)) >> 8) << 8 | (((lum * t2 >> 8) * ((m >> 20) & 1023)) >> 8);
+	return 0xFF000000u | Sat8(((lum * t0 >> 8) * (m & 1023)) >> 8) << 16 | Sat8(((lum * t1 >> 8) * ((m >> 10) & 1023)) >> 8) << 8 | Sat8(((lum * t2 >> 8) * ((m >> 20) & 1023)) >> 8);
 }
 
 /* Test hook: OMNI_DEBUG_FILTER_SHOT=<file.ppm> [OMNI_DEBUG_FILTER_SHOT_FRAME=n]: write the n-th
@@ -432,7 +473,7 @@ static const uint32_t *ApplyInner(const uint32_t *src, int w, int h, int *outW, 
 	if (curFilter == VLF_Filter_Off)
 		return cur;
 
-	if (lutFilter != (int)curFilter || lutW != ow || lutH != oh)
+	if (lutFilter != (int)curFilter || lutBright != curBright || lutW != ow || lutH != oh)
 		BuildLut(curFilter, ow, oh);
 
 	uint32_t *dst = (cur == bufBlur) ? bufTmp : bufBlur;

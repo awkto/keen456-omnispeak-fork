@@ -38,6 +38,7 @@ extern int ck_activeX1Tile;
 extern int ck_activeY1Tile;
 void CK_ViewTilesX(int *x0, int *x1); // keen456-omnispeak-fork #103
 void CK_ViewTilesY(int *y0, int *y1); // keen456-omnispeak-fork #106
+void CK_QueueLiveSettings(int zoom, int camera, int filter, int pixels, int bright); // #110 (any thread)
 void CK_ZoomChanged(void);             // #106: refresh the active-object rectangle
 /* keen456-omnispeak-fork #108: camera dead zone, 0 = vanilla, 1 = scaled with the zoom,
  * 2 = loose, 3 = very loose; applied only with the 'camera-deadzone' fix active */

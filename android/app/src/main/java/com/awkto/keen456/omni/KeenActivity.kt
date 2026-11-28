@@ -79,7 +79,7 @@ class KeenActivity : SDLActivity() {
 
         overlay = TouchOverlayView(this).also { ov ->
             ov.xrayOn = Settings.xrayAtStart(Settings.prefs(this))
-            ov.onOpenSettings = { Settings.show(this, inGame = true) { applySystemBars() } }
+            ov.onOpenSettings = { Settings.show(this, inGame = true) { applySystemBars(); Settings.applyLive(this) } }
             ov.onToggleFullscreen = { SystemBars.toggle(this) }
             ov.onToggleKeyboard = {
                 if (KeenGlue.keyboardShown()) KeenGlue.hideKeyboard() else KeenGlue.showKeyboard()
@@ -156,6 +156,12 @@ class KeenActivity : SDLActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) applySystemBars() else overlay?.releaseAll()
+    }
+
+    /** Back from the picker's settings (another process): take its zoom/camera/filter values live (#110). */
+    override fun onResume() {
+        super.onResume()
+        Settings.applyLive(this)
     }
 
     override fun onPause() {

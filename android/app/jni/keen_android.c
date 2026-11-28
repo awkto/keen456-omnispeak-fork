@@ -28,6 +28,7 @@
 #include "id_rf.h"
 #include "id_sd.h"
 #include "ck_def.h"
+#include "ck_play.h"
 
 #define LOG_TAG "omnispeak"
 
@@ -49,6 +50,17 @@ JNIEXPORT void JNICALL Java_com_awkto_keen456_omni_Native_nativeToggleXray(JNIEn
 	(void)env;
 	(void)cls;
 	RF_ToggleXray();
+}
+
+/* com.awkto.keen456.omni.Native.nativeApplyLive (#110): new zoom / camera / filter / pixels /
+ * filter brightness values for the RUNNING game. Only queued here (one atomic word); the engine's
+ * play loop applies them on its own thread, so any thread may call it. */
+JNIEXPORT void JNICALL Java_com_awkto_keen456_omni_Native_nativeApplyLive(JNIEnv *env, jclass cls, jint zoom, jint camera,
+	jint filter, jint pixels, jint bright)
+{
+	(void)env;
+	(void)cls;
+	CK_QueueLiveSettings(zoom, camera, filter, pixels, bright);
 }
 
 /* --- engine log (#102) -------------------------------------------------------
