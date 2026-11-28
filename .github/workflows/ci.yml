@@ -25,11 +25,13 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
-      - name: Dependencies (apt, cached)
-        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
-        with:
-          packages: libsdl2-dev pkg-config zstd
-          version: 2
+      # plain apt: cache-apt-pkgs-action restored libsdl2-dev without SDL.h on the current runner image
+      # (libsdl2-dev is now a transitional package for sdl2-compat), and this takes ~20 s anyway
+      - name: Dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends libsdl2-dev zstd >/dev/null
+          sdl2-config --cflags
 
       - name: Data guard (no game data tracked)
         run: tools/check-no-data.sh
