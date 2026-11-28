@@ -70,7 +70,7 @@ Options:
   --data DIR                game files: DIR containing keen4/ keen5/ keen6/ or the .CKx files
                             (or env KEEN_DATA; or put them in ~/.local/share/keen456/data)
   -h, --help                this text
-In game: V cycles the screen filter, Z the zoom, C the camera dead zone (all remembered).
+In game: V cycles the screen filter, Z the zoom, C the camera dead zone (all remembered), F10+H toggles x-ray.
 Other /ENGINEARGS (e.g. /NOVSYNC /INTEGER /FIX name) go straight to the engine.
 Preferences: put options in ${XDG_CONFIG_HOME:-~/.config}/keen456/args (one per line).
 Saves/config: ${XDG_DATA_HOME:-~/.local/share}/keen456/keen<N>/
